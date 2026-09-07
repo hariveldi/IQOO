@@ -1,0 +1,300 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// User model
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects          Project[]
+  tasks             Task[]
+  actionInboxItems  ActionInboxItem[]
+  reminders         Reminder[]
+  focusSessions     FocusSession[]
+  meetings          Meeting[]
+  notes             Note[]
+  documents         Document[]
+
+  @@index([email])
+  @@index([createdAt])
+}
+
+// Project model
+model Project {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  color       String?  @default("#3B82F6")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks Task[]
+  notes Note[]
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// Task model
+model Task {
+  id                String   @id @default(cuid())
+  userId            String
+  projectId         String?
+  title             String
+  description       String?
+  status            String   @default("TODO")
+  priority          String   @default("MEDIUM")
+  deadline          DateTime?
+  estimatedMinutes  Int?
+  actualMinutes     Int?
+  tags              String   @default("[]")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user              User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project           Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  // Dependencies: self-referential many-to-many
+  dependsOn         TaskDependency[] @relation("dependsOn")
+  blockedBy         TaskDependency[] @relation("blockedBy")
+
+  reminders         Reminder[]
+  focusSessions     FocusSession[]
+  actionInboxItems  ActionInboxItem[]
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([status])
+  @@index([priority])
+  @@index([deadline])
+  @@index([createdAt])
+}
+
+// Task Dependency model
+model TaskDependency {
+  id          String   @id @default(cuid())
+  fromTaskId  String
+  toTaskId    String
+  createdAt   DateTime @default(now())
+
+  fromTask    Task @relation("dependsOn", fields: [fromTaskId], references: [id], onDelete: Cascade)
+  toTask      Task @relation("blockedBy", fields: [toTaskId], references: [id], onDelete: Cascade)
+
+  @@unique([fromTaskId, toTaskId])
+  @@index([fromTaskId])
+  @@index([toTaskId])
+}
+
+// Reminder model
+model Reminder {
+  id           String   @id @default(cuid())
+  userId       String
+  taskId       String
+  reminderTime DateTime
+  type         String   @default("TIME")
+  sent         Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task         Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([taskId])
+  @@index([reminderTime])
+  @@index([sent])
+}
+
+// Action Inbox Item model
+model ActionInboxItem {
+  id             String   @id @default(cuid())
+  userId         String
+  taskId         String?
+  type           String
+  source         String
+  rawContent     String
+  extractedData  String?
+  status         String   @default("PENDING")
+  convertedTaskId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task           Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@index([type])
+  @@index([source])
+  @@index([createdAt])
+}
+
+// Note model
+model Note {
+  id          String   @id @default(cuid())
+  userId      String
+  projectId   String?
+  title       String
+  content     String
+  tags        String   @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([createdAt])
+}
+
+// Document model
+model Document {
+  id           String   @id @default(cuid())
+  userId       String
+  fileName     String
+  fileType     String
+  fileSize     Int
+  filePath     String
+  content      String?
+  extracted    String?
+  summary      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks       DocumentChunk[]
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// Document Chunk model for searching/retrieval
+model DocumentChunk {
+  id           String   @id @default(cuid())
+  documentId   String
+  chunkIndex   Int
+  content      String
+  embedding    String?
+  createdAt    DateTime @default(now())
+
+  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+}
+
+// Meeting model
+model Meeting {
+  id           String   @id @default(cuid())
+  userId       String
+  title        String
+  date         DateTime
+  transcript   String?
+  summary      String?
+  extracted    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  actions      MeetingAction[]
+
+  @@index([userId])
+  @@index([date])
+  @@index([createdAt])
+}
+
+// Meeting Action model
+model MeetingAction {
+  id           String   @id @default(cuid())
+  meetingId    String
+  action       String
+  owner        String?
+  deadline     DateTime?
+  completed    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  meeting      Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
+  @@index([owner])
+}
+
+// Focus Session model
+model FocusSession {
+  id               String   @id @default(cuid())
+  userId           String
+  taskId           String
+  startTime        DateTime
+  endTime          DateTime?
+  plannedDuration  Int
+  actualDuration   Int?
+  paused           Boolean  @default(false)
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task             Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([taskId])
+  @@index([startTime])
+}
+
+// Productivity Event model for tracking
+model ProductivityEvent {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  eventType   String
+  data        String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// AI Interaction log
+model AIInteraction {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  prompt      String
+  response    String?
+  model       String
+  tokens      Int?
+  duration    Int?
+  success     Boolean  @default(true)
+  error       String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// Daily Plan model
+model DailyPlan {
+  id           String   @id @default(cuid())
+  userId       String
+  date         DateTime
+  blocks       String
+  totalMinutes Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId])
+  @@index([date])
+}

@@ -1,0 +1,1 @@
+{"error":"Invalid credentials","level":"error","message":"Error occurred","method":"POST","path":"/api/auth/login","service":"iqoo-productivity-api","stack":"AppError: Invalid credentials\n    at AuthController.login (D:\\Downloads\\react\\my-react-app\\IQOO\\server\\src\\controllers\\authController.ts:45:13)","timestamp":"2026-09-07T12:06:54.272Z"}
