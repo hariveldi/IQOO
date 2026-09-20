@@ -31,7 +31,7 @@ export function VoiceCapture({ onClose, onSuccess }: VoiceCaptureProps) {
 
       mediaRecorder.onstop = async () => {
         setRecording(false);
-        const audioBlob = new Blob(chunksRef.current, { type: "audio/webm" });
+        // Blob collected in chunksRef.current
         
         // For demo: convert to text (in real implementation, use speech-to-text API)
         // Simulating with a placeholder

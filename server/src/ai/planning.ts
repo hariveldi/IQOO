@@ -113,7 +113,7 @@ export class PlanningService {
     dailyPlan: DailyPlan,
     completedTaskId: string,
     actualDuration: number, // minutes
-    remainingTasks: Task[]
+    _remainingTasks?: Task[]
   ): ScheduleBlock[] {
     // Find the completed block
     const completedBlock = (dailyPlan.blocks as any[]).find(

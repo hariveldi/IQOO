@@ -7,12 +7,20 @@ node_modules/
 .env
 .env.local
 .env.*.local
+.hive.json
+.opencode/
+HIVE_BOARD.md
+HIVE_CHAT.md
+HIVE_FOR_AGENTS.md
+HIVE_MEMBERS.md
+HIVE_RULES.md
 
 # Build
-dist/
-build/
-.next/
-out/
+/dist
+**/dist/
+/build
+/.next
+/out
 
 # Testing
 /coverage
@@ -42,3 +50,8 @@ Thumbs.db
 
 # Generated
 prisma/migrations/
+client/src/**/*.js
+# Runtime logs
+*.log
+# Runtime logs
+*.log

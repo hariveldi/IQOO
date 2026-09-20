@@ -20,7 +20,7 @@ if (config.server.nodeEnv !== "production") {
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize(),
-        winston.format.printf(({ level, message, timestamp, ...meta }) => {
+        winston.format.printf(({ level, message, timestamp }) => {
           return `${timestamp} [${level}]: ${message}`;
         })
       ),

@@ -1,7 +1,7 @@
 import { Response } from "express";
 import { AuthRequest } from "../middleware/auth";
 import { ActionInboxService, AIService } from "../services";
-import { CreateActionInboxSchema, CreateTaskSchema } from "@iqoo/shared";
+import { CreateTaskSchema } from "@iqoo/shared";
 import { AppError } from "../middleware/errorHandler";
 
 export class ActionInboxController {
@@ -16,7 +16,7 @@ export class ActionInboxController {
     }
 
     // Extract structured data from voice
-    const extractedData = await this.aiService.extractTaskFromVoice(transcript);
+    const extractedData = await this.aiService.extractTaskFromVoice(req.userId, transcript);
 
     // Create action inbox item
     const item = await this.inboxService.captureItem(req.userId, {
@@ -41,7 +41,7 @@ export class ActionInboxController {
     }
 
     // Extract from image
-    const extractedData = await this.aiService.extractFromImage(imageBase64);
+    const extractedData = await this.aiService.extractFromImage(req.userId, imageBase64, imageType);
 
     // Create action inbox item
     const item = await this.inboxService.captureItem(req.userId, {

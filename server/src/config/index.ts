@@ -4,7 +4,7 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
-dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+dotenv.config({ path: path.resolve(__dirname, "../../.env"), override: true });
 
 export const config = {
   server: {
@@ -31,6 +31,7 @@ export const config = {
     provider: process.env.AI_PROVIDER || "local",
     model: process.env.AI_MODEL || "llama2",
     openaiKey: process.env.OPENAI_API_KEY,
+    xkiroKey: process.env.XKIRO_API_KEY,
     anthropicKey: process.env.ANTHROPIC_API_KEY,
   },
 };

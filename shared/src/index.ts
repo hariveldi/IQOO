@@ -1,30 +1,3 @@
 export * from "./types";
-export {
-  RegisterSchema,
-  LoginSchema,
-  CreateTaskSchema,
-  UpdateTaskSchema,
-  CreateProjectSchema,
-  UpdateProjectSchema,
-  TaskExtractionSchema,
-  DocumentExtractionSchema,
-  ActionInboxItemSchema,
-  CreateActionInboxSchema,
-  AIAssistantRequestSchema,
-  VoiceCaptureSchema,
-  ImageCaptureSchema,
-  DocumentUploadSchema,
-  ApiResponseSchema,
-  ErrorResponseSchema,
-} from "./schemas";
-export type {
-  RegisterInput,
-  LoginInput,
-  UpdateProjectInput,
-  TaskExtractionInput,
-  DocumentExtractionInput,
-  AIAssistantRequest,
-  VoiceCaptureInput,
-  ImageCaptureInput,
-  DocumentUploadInput,
-} from "./schemas";
+export * from "./schemas";
+

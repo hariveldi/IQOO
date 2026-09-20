@@ -20,14 +20,14 @@ export function AdvancedVoiceCapture({
 
   // Initialize Web Speech API
   const initSpeechRecognition = useCallback(() => {
-    if (!window.SpeechRecognition && !(window as any).webkitSpeechRecognition) {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) {
       setIsSupported(false)
       setError('Speech recognition not supported in your browser')
       return false
     }
 
-    const SpeechRecognition =
-      window.SpeechRecognition || (window as any).webkitSpeechRecognition
     const recognition = new SpeechRecognition()
 
     recognition.continuous = true

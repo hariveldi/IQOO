@@ -1,4 +1,3 @@
-import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store'
 import { apiClient } from '../services/api'
@@ -45,7 +44,7 @@ export default function ProfilePage() {
             <div>
               <p className="text-sm font-medium text-gray-700">Member Since</p>
               <p className="text-gray-900">
-                {new Date(user.createdAt || Date.now()).toLocaleDateString()}
+                {new Date((user as any).createdAt || Date.now()).toLocaleDateString()}
               </p>
             </div>
           </div>

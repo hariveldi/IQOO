@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -18,6 +18,21 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
 
+  const getFriendlyError = (err: any, fallback: string) => {
+    const status = err?.response?.status
+    const serverMessage = err?.response?.data?.error || err?.response?.data?.message || err?.message
+
+    if (status === 429) {
+      return 'Too many registration attempts. Please wait a moment and try again.'
+    }
+
+    if (status === 409) {
+      return 'An account with this email already exists.'
+    }
+
+    return serverMessage || fallback
+  }
+
   const { register, handleSubmit, formState: { errors } } = useForm<RegisterInputs>({
     resolver: zodResolver(RegisterSchema),
   })
@@ -28,11 +43,20 @@ export default function RegisterPage() {
 
     try {
       const response = await apiClient.register(data.email, data.password, data.name)
-      apiClient.setToken(response.data.accessToken, response.data.refreshToken)
-      setUser(response.data.user)
-      navigate('/')
+      const payload = response?.data ?? response
+      const accessToken = payload?.data?.accessToken ?? payload?.accessToken
+      const refreshToken = payload?.data?.refreshToken ?? payload?.refreshToken
+      const user = payload?.data?.user ?? payload?.user
+
+      if (!accessToken || !refreshToken || !user) {
+        throw new Error('Invalid registration response')
+      }
+
+      apiClient.setToken(accessToken, refreshToken)
+      setUser(user)
+      navigate('/dashboard')
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Registration failed')
+      setError(getFriendlyError(err, 'Registration failed'))
     } finally {
       setIsLoading(false)
     }

@@ -91,7 +91,7 @@ export class AuthController {
     });
   }
 
-  async logout(req: AuthRequest, res: Response) {
+  async logout(_req: AuthRequest, res: Response) {
     // In a real app, you'd invalidate the refresh token
     res.json({
       success: true,

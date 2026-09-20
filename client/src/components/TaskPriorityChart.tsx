@@ -1,5 +1,5 @@
 import { Task } from '../types';
-import { AlertCircle, TrendingUp } from 'lucide-react';
+import { TrendingUp } from 'lucide-react';
 
 interface TaskPriorityProps {
   tasks: Task[];

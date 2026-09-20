@@ -51,6 +51,20 @@ DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@localhost:5432/iqoo_productivi
 
 Replace `YOUR_PASSWORD` with the password you set during PostgreSQL installation.
 
+### Enable real OpenAI reasoning (optional)
+
+The application runs in deterministic local mode until an OpenAI key is configured. To enable the real provider, edit the server environment file and set:
+
+```env
+AI_PROVIDER=openai
+AI_MODEL=gpt-4o-mini
+OPENAI_API_KEY=your-openai-api-key
+```
+
+Keep `OPENAI_API_KEY` on the server only; do not add it to the client environment or commit it to Git. Restart the backend after changing these values, then check `GET /api/ai/status`. A successful configuration reports `provider: "openai"`, `isRealAI: true`, and `isFallback: false`.
+
+Without a key, the app automatically uses the deterministic local provider and reports that status honestly.
+
 ## Step 4: Set up the Database
 
 ```bash

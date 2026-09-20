@@ -1,19 +1,21 @@
-import { Response, NextFunction } from "express";
+import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { config } from "../config";
 import { logger } from "../config/logger";
 
-export interface AuthRequest extends Express.Request {
+export interface AuthRequest extends Request {
   userId?: string;
   user?: any;
 }
 
 export const authenticateToken = (
-  req: AuthRequest,
+  req: Request,
   res: Response,
   next: NextFunction
-) => {
+): void | Response => {
+  const authReq = req as AuthRequest;
   const authHeader = req.headers["authorization"];
+
   const token = authHeader && authHeader.split(" ")[1];
 
   if (!token) {
@@ -25,11 +27,11 @@ export const authenticateToken = (
 
   try {
     const decoded = jwt.verify(token, config.jwt.secret) as any;
-    req.userId = decoded.userId;
+    authReq.userId = decoded.userId;
     next();
-  } catch (error) {
+  } catch (error: any) {
     logger.error("Token verification failed", { error });
-    if (error instanceof jwt.ExpiredSignatureError) {
+    if (error?.name === "TokenExpiredError") {
       return res.status(401).json({
         success: false,
         error: "Token has expired",
@@ -43,17 +45,18 @@ export const authenticateToken = (
   }
 };
 
-export const generateAccessToken = (userId: string) => {
+export const generateAccessToken = (userId: string): string => {
   return jwt.sign({ userId }, config.jwt.secret, {
-    expiresIn: config.jwt.expiry,
+    expiresIn: config.jwt.expiry as any,
   });
 };
 
-export const generateRefreshToken = (userId: string) => {
+export const generateRefreshToken = (userId: string): string => {
   return jwt.sign({ userId }, config.jwt.refreshSecret, {
-    expiresIn: config.jwt.refreshExpiry,
+    expiresIn: config.jwt.refreshExpiry as any,
   });
 };
+
 
 export const verifyRefreshToken = (token: string) => {
   try {

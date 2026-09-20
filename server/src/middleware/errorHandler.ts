@@ -1,4 +1,4 @@
-import { Response, NextFunction } from "express";
+import { Request, Response, NextFunction } from "express";
 import { logger } from "../config/logger";
 
 export class AppError extends Error {
@@ -14,15 +14,15 @@ export class AppError extends Error {
 
 export const errorHandler = (
   err: any,
-  req: Express.Request,
+  req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ) => {
   logger.error("Error occurred", {
-    error: err.message,
-    stack: err.stack,
-    path: req.path,
-    method: req.method,
+    error: err?.message,
+    stack: err?.stack,
+    path: req?.path,
+    method: req?.method,
   });
 
   if (err instanceof AppError) {
@@ -63,13 +63,23 @@ export const errorHandler = (
     });
   }
 
+  if (typeof err.code === "string" && err.code.startsWith("AI_PROVIDER_")) {
+    return res.status(err.statusCode || 503).json({
+      success: false,
+      error: err.message || "AI provider is temporarily unavailable",
+      code: err.code,
+      timestamp: new Date(),
+    });
+  }
+
   // Default error
-  res.status(500).json({
+  return res.status(500).json({
     success: false,
     error:
       process.env.NODE_ENV === "production"
         ? "Internal server error"
-        : err.message,
+        : err?.message || "Internal server error",
     timestamp: new Date(),
   });
 };
+

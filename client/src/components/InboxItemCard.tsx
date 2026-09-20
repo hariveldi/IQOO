@@ -1,4 +1,4 @@
-import { Check, X, Plus, ChevronDown } from "lucide-react";
+import { Check, X, Plus } from "lucide-react";
 import { useState } from "react";
 import { apiClient } from "../services/api";
 
@@ -9,7 +9,6 @@ interface InboxItemCardProps {
 
 export function InboxItemCard({ item, onStatusChange }: InboxItemCardProps) {
   const [loading, setLoading] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
   const [conversionLoading, setConversionLoading] = useState(false);
 
   const handleAccept = async () => {

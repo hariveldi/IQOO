@@ -40,13 +40,13 @@ export const createApp = (): Express => {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
   // Request logging
-  app.use((req, res, next) => {
+  app.use((req, _res, next) => {
     logger.debug(`${req.method} ${req.path}`);
     next();
   });
 
   // Health check
-  app.get("/health", (req: any, res: Response) => {
+  app.get("/health", (_req: any, res: Response) => {
     res.json({ status: "ok", timestamp: new Date() });
   });
 

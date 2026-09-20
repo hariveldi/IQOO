@@ -40,23 +40,28 @@ export default function App() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
 
   useEffect(() => {
-    // Try to restore user from token
     const token = localStorage.getItem('accessToken')
-    if (token) {
-      setIsLoading(true)
-      apiClient
-        .getProfile()
-        .then((response) => {
-          setUser(response.data.user)
-        })
-        .catch(() => {
-          localStorage.removeItem('accessToken')
-          localStorage.removeItem('refreshToken')
-        })
-        .finally(() => {
-          setIsLoading(false)
-        })
+    if (!token) {
+      setUser(null)
+      setIsLoading(false)
+      return
     }
+
+    setIsLoading(true)
+    apiClient
+      .getProfile()
+      .then((response) => {
+        const profileUser = response?.data?.data?.user ?? response?.data?.user ?? null
+        setUser(profileUser)
+      })
+      .catch(() => {
+        localStorage.removeItem('accessToken')
+        localStorage.removeItem('refreshToken')
+        setUser(null)
+      })
+      .finally(() => {
+        setIsLoading(false)
+      })
   }, [setUser, setIsLoading])
 
   return (

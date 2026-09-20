@@ -3,7 +3,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { CreateTaskSchema } from "@iqoo/shared";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "../services/api";
-import { X, Calendar, Flag, Clock, Plus } from "lucide-react";
+import { X, Calendar, Clock } from "lucide-react";
 import { useState } from "react";
 
 interface TaskFormProps {
@@ -60,7 +60,6 @@ export function TaskForm({
     }
   };
 
-  const priority = watch("priority");
   const deadline = watch("deadline");
 
   const getPriorityColor = (p: string) => {
@@ -108,7 +107,7 @@ export function TaskForm({
             />
             {errors.title && (
               <p className="text-red-500 text-sm mt-1">
-                {errors.title.message}
+                {String(errors.title.message || "Invalid title")}
               </p>
             )}
           </div>

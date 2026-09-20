@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { X, Bell } from 'lucide-react'
 
 interface RemindersProps {
@@ -6,7 +6,7 @@ interface RemindersProps {
   reminders?: any[]
 }
 
-export function RemindersWidget({ taskId, reminders = [] }: RemindersProps) {
+export function RemindersWidget({ taskId: _taskId, reminders = [] }: RemindersProps) {
   const [showForm, setShowForm] = useState(false)
   const [reminderTime, setReminderTime] = useState('')
   const [reminderType, setReminderType] = useState('BEFORE')

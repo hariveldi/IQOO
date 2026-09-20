@@ -86,32 +86,14 @@ export const generateDailyPlan = (input: ScheduleInput): ScheduleBlock[] => {
 export const rescheduleRemainingTasks = (
   currentPlan: DailyPlan,
   completedTaskId: string,
-  actualDuration: number,
-  tasks: Task[]
+  _actualDuration: number,
+  _tasks: Task[]
 ): ScheduleBlock[] => {
   // Find how much time was saved/lost
   const originalBlock = currentPlan.blocks.find(
     (b) => b.taskId === completedTaskId
   );
   if (!originalBlock) return currentPlan.blocks;
-
-  const timeSaved =
-    originalBlock.endTime.getTime() - originalBlock.startTime.getTime() -
-    actualDuration * 60 * 1000;
-
-  // Get remaining tasks
-  const remainingTasks = tasks.filter(
-    (t) =>
-      t.status !== "COMPLETED" &&
-      t.status !== "CANCELLED" &&
-      !currentPlan.blocks.some(
-        (b) => b.taskId === t.id && b.taskId !== completedTaskId
-      )
-  );
-
-  // If time was saved, we can fit more tasks
-  // If time was lost, we need to reschedule some tasks to next day
-  // For now, simple reschedule: remove the completed task and re-add remaining
 
   const blocks = currentPlan.blocks.filter((b) => b.taskId !== completedTaskId);
 

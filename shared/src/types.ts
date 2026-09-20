@@ -229,3 +229,186 @@ export interface ProductivityMetrics {
   };
   projectProgress: Record<string, number>; // project to completion %
 }
+
+// AI Actions & Context Types
+export type AIActionType =
+  | "CREATE_TASK"
+  | "UPDATE_TASK"
+  | "DELETE_TASK"
+  | "CREATE_DEPENDENCY"
+  | "DELETE_DEPENDENCY"
+  | "CREATE_PROJECT"
+  | "SCHEDULE_PLAN";
+
+export interface AIAction {
+  id?: string;
+  type: AIActionType;
+  description: string;
+  data: Record<string, any>;
+}
+
+export interface AIChatMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+
+export interface AIUserContext {
+  userId?: string;
+  activeTasks: Array<{
+    id: string;
+    title: string;
+    description?: string | null;
+    status: string;
+    priority: string;
+    deadline?: Date | string | null;
+    estimatedMinutes?: number | null;
+    actualMinutes?: number | null;
+    projectName?: string;
+    projectId?: string | null;
+    tags?: string[];
+    isBlocked?: boolean;
+    blockers?: Array<{ id: string; title: string; status: string }>;
+    unblocks?: Array<{ id: string; title: string; status: string }>;
+  }>;
+  completedTasksCount: number;
+  recentCompletedTasks?: Array<{
+    id: string;
+    title: string;
+    priority: string;
+    projectName?: string;
+    estimatedMinutes?: number | null;
+    actualMinutes?: number | null;
+    createdAt: Date | string;
+    updatedAt: Date | string;
+  }>;
+  overdueTasksCount: number;
+  projects: Array<{
+    id: string;
+    name: string;
+    description?: string | null;
+    totalTasks: number;
+    completedTasks: number;
+  }>;
+  recentFocusSessions?: Array<{
+    taskId: string;
+    taskTitle: string;
+    durationMinutes: number;
+    plannedMinutes: number;
+    completedAt: Date | string;
+  }>;
+  pendingInboxItemsCount?: number;
+  availableHoursTonight?: number;
+}
+
+export interface AIChatResponse {
+  message: string;
+  actions?: AIAction[];
+  reasoning?: string;
+  suggestedFollowUps?: string[];
+  provider: "openai" | "xkiro" | "local_fallback" | "anthropic" | "ollama";
+  isFallback: boolean;
+}
+
+export interface AISmartRecommendation {
+  recommended: {
+    id: string;
+    title: string;
+    description?: string | null;
+    projectId?: string | null;
+    projectName?: string | null;
+    priority: string;
+    deadline?: Date | string | null;
+    estimatedMinutes?: number | null;
+    blocks: Array<{ id: string; title: string; status: string }>;
+    blockers: Array<{ id: string; title: string; status: string }>;
+    risk?: {
+      riskLevel: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+      score: number;
+      explanation: string;
+    };
+  } | null;
+  reason: string;
+  whyThisTask: string;
+  riskIfDelayed: string;
+  expectedTime: string;
+  blockersExplanation: string;
+  nextAfterThis?: string;
+  provider?: string;
+  isFallback?: boolean;
+}
+
+export interface AIProductivityInsight {
+  title: string;
+  insight: string;
+  type: "WARNING" | "SUCCESS" | "RECOMMENDATION" | "NEUTRAL";
+  metricSource?: string;
+  actionableSuggestion?: string;
+}
+
+export interface AIDailyBriefing {
+  greeting: string;
+  summary: string;
+  totalTasksToday: number;
+  dueTodayCount: number;
+  overdueCount: number;
+  blockedCount: number;
+  estimatedWorkHours: number;
+  availableHours: number;
+  topAction: {
+    title: string;
+    why: string;
+    unlocks?: string;
+  } | null;
+  suggestedSchedule: Array<{
+    timeSlot: string;
+    taskTitle: string;
+    durationMinutes: number;
+  }>;
+  deadlineAlerts: Array<{
+    title: string;
+    deadline: string;
+    urgency: string;
+  }>;
+  provider: string;
+  isFallback: boolean;
+}
+
+export interface AITaskBreakdown {
+  originalTask: string;
+  subtasks: Array<{
+    title: string;
+    description?: string;
+    estimatedMinutes: number;
+    priority: TaskPriority;
+    dependsOnPrevious?: boolean;
+  }>;
+  actions: AIAction[];
+  provider: string;
+  isFallback: boolean;
+}
+
+export interface AIProjectReview {
+  projectId: string;
+  projectName: string;
+  healthStatus: "HEALTHY" | "AT_RISK" | "BLOCKED" | "ON_TRACK";
+  healthPercentage: number;
+  executiveSummary: string;
+  bottlenecks: string[];
+  recommendations: string[];
+  criticalPath: string[];
+  estimatedRemainingMinutes: number;
+  provider: string;
+  isFallback: boolean;
+}
+
+export interface AIWeeklyReview {
+  summary: string;
+  completionVelocity: string;
+  topBottleneckProject?: string;
+  actionableChanges: string[];
+  productivityScore: number;
+  provider: string;
+  isFallback: boolean;
+}
+
+

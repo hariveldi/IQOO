@@ -1,6 +1,11 @@
 import axios, { AxiosInstance } from 'axios'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
+const configuredApiUrl = import.meta.env.VITE_API_URL?.trim().replace(/\/+$/, '')
+const API_BASE_URL = configuredApiUrl
+  ? configuredApiUrl.endsWith('/api')
+    ? configuredApiUrl
+    : `${configuredApiUrl}/api`
+  : 'http://localhost:3001/api'
 
 class ApiClient {
   private client: AxiosInstance
@@ -33,7 +38,8 @@ class ApiClient {
       (response) => response,
       async (error) => {
         const originalRequest = error.config
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        const isAuthRequest = originalRequest?.url?.startsWith('/auth/')
+        if (error.response?.status === 401 && !isAuthRequest && !originalRequest._retry) {
           originalRequest._retry = true
           try {
             const refreshToken = localStorage.getItem('refreshToken')
@@ -70,6 +76,7 @@ class ApiClient {
 
   // Auth endpoints
   async register(email: string, password: string, name: string) {
+    this.logout()
     const response = await this.client.post('/auth/register', {
       email,
       password,
@@ -79,6 +86,7 @@ class ApiClient {
   }
 
   async login(email: string, password: string) {
+    this.logout()
     const response = await this.client.post('/auth/login', {
       email,
       password,
@@ -193,7 +201,64 @@ class ApiClient {
     return response.data
   }
 
+  // Generic HTTP methods
+  async get<T = any>(url: string, config?: any): Promise<{ data: T }> {
+    const response = await this.client.get(url, config)
+    return response.data
+  }
+
+  async post<T = any>(url: string, data?: any, config?: any): Promise<{ data: T }> {
+    const response = await this.client.post(url, data, config)
+    return response.data
+  }
+
+  async patch<T = any>(url: string, data?: any, config?: any): Promise<{ data: T }> {
+    const response = await this.client.patch(url, data, config)
+    return response.data
+  }
+
+  async delete<T = any>(url: string, config?: any): Promise<{ data: T }> {
+    const response = await this.client.delete(url, config)
+    return response.data
+  }
+
+  // Dependency endpoints
+  async getDependencies(taskId: string) {
+    const response = await this.client.get(`/tasks/${taskId}/blockers`)
+    return response.data
+  }
+
+  async createDependency(taskId: string, dependsOnTaskId: string) {
+    const response = await this.client.post('/tasks/dependencies', {
+      fromTaskId: dependsOnTaskId,
+      toTaskId: taskId,
+    })
+    return response.data
+  }
+
+  async deleteDependency(taskId: string, dependsOnTaskId: string) {
+    const response = await this.client.delete('/tasks/dependencies', {
+      data: { fromTaskId: dependsOnTaskId, toTaskId: taskId },
+    })
+    return response.data
+  }
+
   // AI endpoints
+  async getAIStatus() {
+    const response = await this.client.get('/ai/status')
+    return response.data
+  }
+
+  async getAIInsights() {
+    const response = await this.client.get('/ai/insights')
+    return response.data
+  }
+
+  async executeAIActions(actions: any[]) {
+    const response = await this.client.post('/ai/execute-actions', { actions })
+    return response.data
+  }
+
   async extractFromVoice(transcript: string) {
     const response = await this.client.post('/ai/extract/voice', { transcript })
     return response.data
@@ -212,6 +277,31 @@ class ApiClient {
       documentContent,
       fileName,
     })
+    return response.data
+  }
+
+  async getDailyBriefing() {
+    const response = await this.client.get('/ai/daily-briefing')
+    return response.data
+  }
+
+  async getWeeklyReview() {
+    const response = await this.client.get('/ai/weekly-review')
+    return response.data
+  }
+
+  async breakdownTask(title: string, description?: string) {
+    const response = await this.client.post('/ai/breakdown', { title, description })
+    return response.data
+  }
+
+  async estimateDuration(title: string, description?: string) {
+    const response = await this.client.post('/ai/estimate', { title, description })
+    return response.data
+  }
+
+  async getProjectReview(projectId: string, name?: string, tasks?: any[]) {
+    const response = await this.client.post(`/ai/project-review/${projectId}`, { name, tasks })
     return response.data
   }
 

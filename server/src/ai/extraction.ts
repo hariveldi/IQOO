@@ -1,4 +1,4 @@
-import { TaskExtractionResult, DocumentExtractionResult } from "@iqoo/shared";
+import { TaskExtractionResult, DocumentExtractionResult, TaskPriority } from "@iqoo/shared";
 import { AIProvider } from "./provider";
 
 /**
@@ -13,12 +13,9 @@ export class ExtractionService {
    */
   async extractTaskFromVoice(transcript: string): Promise<TaskExtractionResult> {
     const result = await this.aiProvider.extractTaskFromText(transcript);
-    
-    // Ensure confidence level
     if (!result.confidence) {
-      result.confidence = 0.75; // Default confidence for voice
+      result.confidence = 0.75;
     }
-
     return result;
   }
 
@@ -27,17 +24,13 @@ export class ExtractionService {
    */
   async extractFromImage(
     imageBase64: string,
-    imageType: string
+    imageType?: string
   ): Promise<TaskExtractionResult> {
-    // For whiteboard/notes images
-    const result = await this.aiProvider.extractFromImage(imageBase64);
-
-    // Enhance with image type context
+    const result = await this.aiProvider.extractFromImage(imageBase64, imageType);
     if (imageType === "WHITEBOARD" || imageType === "MEETING") {
-      result.priority = result.priority || "HIGH";
-      result.confidence = (result.confidence || 0) + 0.1; // Boost confidence for structured sources
+      result.priority = result.priority || TaskPriority.HIGH;
+      result.confidence = (result.confidence || 0) + 0.1;
     }
-
     return result;
   }
 
@@ -53,62 +46,15 @@ export class ExtractionService {
       fileName
     );
 
-    // Post-process: ensure we have reasonable data
     if (!result.keyPoints || result.keyPoints.length === 0) {
       result.keyPoints = result.summary ? [result.summary] : [];
     }
 
     if (!result.actionItems || result.actionItems.length === 0) {
-      // Try to infer action items from summary
-      result.actionItems = [
-        "Review document",
-        "Follow up on key points",
-      ];
+      result.actionItems = ["Review document", "Follow up on key points"];
     }
 
     return result;
   }
-
-  /**
-   * Extract meeting action items
-   */
-  async extractFromMeeting(
-    transcript: string,
-    attendees?: string[]
-  ): Promise<{
-    summary: string;
-    actionItems: Array<{ action: string; owner?: string; deadline?: Date }>;
-    decisions: string[];
-  }> {
-    const result = await this.aiProvider.extractFromText(transcript);
-
-    return {
-      summary: result.description || "",
-      actionItems: [
-        { action: "Follow up on discussed items", owner: attendees?.[0] },
-      ],
-      decisions: [],
-    };
-  }
-
-  /**
-   * Generate natural language recommendation
-   */
-  async generateRecommendation(context: {
-    completedTasks: number;
-    pendingTasks: number;
-    overdueTasks: number;
-    highPriorityTasks: number;
-    timeOfDay?: string;
-  }): Promise<string> {
-    const contextStr = `
-      User has completed ${context.completedTasks} tasks today.
-      ${context.pendingTasks} tasks pending.
-      ${context.overdueTasks} tasks overdue.
-      ${context.highPriorityTasks} high-priority tasks.
-      Current time: ${context.timeOfDay || "unknown"}.
-    `;
-
-    return this.aiProvider.generateTaskRecommendation(contextStr);
-  }
 }
+
