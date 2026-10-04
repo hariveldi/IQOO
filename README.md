@@ -1,338 +1,184 @@
-# iQOO AI Productivity Platform
+# iQOO Productivity AI
 
-An intelligent, mobile-first productivity system that captures unstructured information from the user's real world through the phone, understands it using AI, converts it into actionable work, prioritizes and schedules that work, and helps the user execute it.
+A phone-first AI productivity assistant that turns real-world information and conversations into actionable work.
 
-Built for iQOO Hackathon 2026 — AI Productivity track.
+Built for the **iQOO Hackathon 2026**.
 
-## Core Philosophy
+## Core Idea
 
-**"Capture anything. Understand everything. Turn information into action."**
+**Capture useful information. Understand its context. Turn it into actionable work.**
 
-## Features
+People often make commitments during everyday conversations or receive useful information through voice, camera, text, and documents. Remembering and manually converting that information into organized tasks can be difficult.
 
-### Phase 1: Foundation
-- User authentication with JWT
-- Core task management
-- Project workspace
-- Mobile-first UI with Tailwind CSS
+iQOO Productivity AI captures relevant information, uses AI to understand its context, creates a structured task, stores it, and lets the user review and decide whether to proceed, edit, or ignore it.
 
-### Phase 2: Core Productivity
-- Task CRUD operations
-- Project management
-- Action Inbox for captured items
-- Task prioritization
-- Task dependencies
+---
 
-### Phase 3: AI Integration
-- Voice-to-task extraction
-- Camera/image processing
-- Document intelligence
-- Structured AI output validation
+## What Makes It Different
 
-### Phase 4: Intelligence
-- AI-powered daily planner
-- Automatic task rescheduling
-- "What should I do now?" recommendations
-- Personal work memory with search
+The system does not simply convert a sentence into a generic task.
 
-### Phase 5: Mobile Features
-- Camera capture
-- Voice recording
-- Mobile-optimized interface
-- Context-aware capabilities
+For example:
 
-### Phase 6: Office Kit Integration
-- Cross-device workflows
-- Phone-to-laptop task transfer
+> "I'll send Rahul the project report tomorrow."
 
-### Phase 7: Analytics & Polish
-- Productivity analytics
-- Focus mode
-- Animations and loading states
-- Demo data
+The system identifies:
 
-## Tech Stack
+- **WHO** → Me
+- **WHAT** → Send project report
+- **FOR WHOM** → Rahul
+- **WHEN** → Tomorrow
+
+This context is converted into a structured commitment that the user can review and act on.
+
+---
+
+## Core Features
+
+### Ambient AI
+
+The user explicitly starts an Ambient AI listening session.
+
+During the active session:
+
+1. Speech is captured from the microphone.
+2. An on-device AI filter checks whether the information appears actionable.
+3. Irrelevant information is filtered locally.
+4. Actionable information is sent to Gemini for deeper understanding.
+5. A structured task or commitment is created.
+6. The result is stored in SQLite.
+7. The user can review and decide what to do next.
+
+### On-Device Relevance Filtering
+
+The first filtering stage runs locally using:
+
+**Xenova/all-MiniLM-L6-v2**
+
+with:
+
+**ONNX Runtime Web / WASM**
+
+For example:
+
+> "The weather is really nice today."
+
+is classified as irrelevant and does not require Gemini processing.
+
+Whereas:
+
+> "I'll send Rahul the report tomorrow."
+
+is identified as actionable and forwarded for AI understanding.
+
+This reduces unnecessary cloud processing and keeps the initial relevance decision on the device.
+
+### Commitment Intelligence
+
+The AI extracts the context behind an actionable commitment, including:
+
+- Owner
+- Action
+- Person involved
+- Deadline
+- Execution type
+- Draft action
+
+The system then presents the structured result to the user.
+
+**The AI does not silently execute every action.**
+
+The flow is:
+
+**Capture → Understand → Create → Store → Review → Confirm → Execute / Handoff**
+
+---
+
+## Multimodal Input
+
+Actionable information does not always come from conversations.
+
+The application supports:
+
+- Voice
+- Camera
+- Text
+- PDF / Documents
+
+For example, a user can point the camera at an invoice and say:
+
+> "Create a task to pay this invoice before the due date."
+
+The application combines the visual information and voice instruction to create a structured task.
+
+---
+
+## Office Kit
+
+iQOO Productivity AI can continue the workflow across devices through **Office Kit**.
+
+**Phone → Office Kit → Laptop**
+
+Once a task is created, the user can hand it off to a connected laptop and continue the workflow there.
+
+---
+
+## Technology
 
 ### Frontend
-- **React** 18 with TypeScript
-- **Vite** for fast development
-- **Tailwind CSS** for styling
-- **React Router** for navigation
-- **TanStack Query** for data management
-- **React Hook Form** for forms
-- **Zod** for validation
-- **Lucide React** for icons
-- **Recharts** for analytics
+
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+- React Router
+
+### AI
+
+- Gemini
+- `gemini-flash-lite-latest`
+- Xenova/all-MiniLM-L6-v2
+- ONNX Runtime Web / WASM
 
 ### Backend
-- **Node.js** with Express.js
-- **TypeScript** for type safety
-- **PostgreSQL** for data persistence
-- **Prisma ORM** for database access
-- **JWT** for authentication
-- **bcrypt** for password hashing
-- **Helmet** for security headers
-- **CORS** and rate limiting
 
-### Shared
-- TypeScript types and schemas
-- Validation schemas with Zod
+- Node.js
+- Express
+- TypeScript
 
-## Project Structure
+### Storage
 
-```
-.
-├── client/              # React frontend
-│   ├── src/
-│   │   ├── components/  # Reusable React components
-│   │   ├── pages/       # Page components
-│   │   ├── services/    # API client services
-│   │   ├── hooks/       # Custom React hooks
-│   │   ├── types/       # TypeScript types
-│   │   ├── utils/       # Utility functions
-│   │   ├── styles/      # Global styles
-│   │   └── App.tsx
-│   ├── index.html
-│   ├── vite.config.ts
-│   └── package.json
-│
-├── server/              # Express backend
-│   ├── src/
-│   │   ├── config/      # Configuration
-│   │   ├── routes/      # API routes
-│   │   ├── controllers/ # Request handlers
-│   │   ├── services/    # Business logic
-│   │   ├── repositories/# Database access
-│   │   ├── middleware/  # Express middleware
-│   │   ├── validators/  # Input validation
-│   │   ├── ai/          # AI abstraction layer
-│   │   ├── productivity/# Productivity engine
-│   │   ├── utils/       # Utility functions
-│   │   ├── types/       # TypeScript types
-│   │   ├── jobs/        # Background jobs
-│   │   ├── app.ts
-│   │   └── server.ts
-│   ├── prisma/
-│   │   ├── schema.prisma# Database schema
-│   │   └── seed.ts      # Seed data
-│   └── package.json
-│
-├── shared/              # Shared code
-│   ├── src/
-│   │   ├── types/       # Shared types
-│   │   └── schemas/     # Zod validation schemas
-│   └── package.json
-│
-├── package.json         # Monorepo root
-├── .env.example         # Environment template
-└── README.md
-```
+- SQLite
 
-## Getting Started
+### Device Connectivity
 
-### Prerequisites
-- Node.js 18+
-- npm or yarn
-- PostgreSQL 14+
-- Git
+- iQOO Office Kit
 
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone <repo-url>
-   cd iqoo-ai-productivity-platform
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Set up environment variables**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
-
-4. **Set up the database**
-   ```bash
-   cd server
-   npx prisma migrate dev
-   npx prisma db seed
-   cd ..
-   ```
-
-5. **Start development servers**
-   ```bash
-   npm run dev
-   ```
-
-   This will run:
-   - Backend on http://localhost:3001
-   - Frontend on http://localhost:5173
-
-### Running Tests
-
-```bash
-npm test
-```
-
-### Building for Production
-
-```bash
-npm run build
-npm start
-```
+---
 
 ## Architecture
 
-### Frontend Architecture
-- Component-based React with TypeScript
-- Mobile-first responsive design using Tailwind CSS
-- TanStack Query for efficient state management and API caching
-- React Router for navigation
-- Zod for runtime validation
+```text
 
-### Backend Architecture
-- Modular Express application
-- Separation of concerns: routes → controllers → services → repositories
-- Centralized error handling and logging
-- JWT-based authentication with refresh tokens
-- Prisma ORM for type-safe database access
-- AI provider abstraction for model flexibility
-
-### Database Design
-- Normalized PostgreSQL schema
-- Tables: User, Project, Task, TaskDependency, Note, Document, ActionInboxItem, Meeting, Reminder, FocusSession, ProductivityEvent, etc.
-- Proper indexing for query performance
-- Cascading delete rules
-
-## API Documentation
-
-### Authentication
-- `POST /api/auth/register` - Create account
-- `POST /api/auth/login` - Login
-- `POST /api/auth/refresh` - Refresh token
-- `POST /api/auth/logout` - Logout
-
-### Tasks
-- `GET /api/tasks` - List tasks
-- `POST /api/tasks` - Create task
-- `GET /api/tasks/:id` - Get task details
-- `PATCH /api/tasks/:id` - Update task
-- `DELETE /api/tasks/:id` - Delete task
-
-### Projects
-- `GET /api/projects` - List projects
-- `POST /api/projects` - Create project
-- `GET /api/projects/:id` - Get project
-- `PATCH /api/projects/:id` - Update project
-
-### Capture
-- `POST /api/capture/voice` - Process voice input
-- `POST /api/capture/image` - Process image input
-- `POST /api/capture/document` - Process document
-
-### AI
-- `POST /api/ai/extract` - Extract structured data
-- `POST /api/ai/prioritize` - Calculate priorities
-- `POST /api/ai/plan` - Generate daily plan
-- `POST /api/ai/reschedule` - Reschedule tasks
-- `POST /api/ai/assistant` - Chat with AI assistant
-
-### Analytics
-- `GET /api/analytics/dashboard` - Get analytics data
-
-## Mobile-First Design
-
-The application is optimized for mobile devices first:
-- Responsive design from 360px width
-- Touch-friendly interface
-- Bottom navigation on mobile
-- Floating action button for quick capture
-- Native mobile patterns
-
-## Security
-
-- Password hashing with bcrypt
-- JWT-based authentication
-- Refresh token rotation
-- Input validation with Zod
-- SQL injection protection via Prisma
-- File upload validation
-- CORS configuration
-- Helmet security headers
-- Rate limiting
-
-## Performance
-
-- Lazy loading of components
-- Pagination for large datasets
-- Image compression before upload
-- Database query optimization
-- Caching with TanStack Query
-- Optimistic updates
-
-## AI Architecture
-
-- Provider abstraction for model flexibility
-- Structured output validation
-- Support for local/open-source models (Llama, Qwen, Gemma, Phi)
-- Cloud fallback options (OpenAI, Anthropic)
-- Hallucination control with structured schemas
-- Clear distinction between facts and AI suggestions
-
-## Development Guidelines
-
-- Write meaningful, self-documenting code
-- Use TypeScript strictly (no `any`)
-- Keep components small and reusable
-- Centralize business logic in services
-- Test critical functionality
-- Follow conventional commits
-- Maintain clear Git history
-
-## Debugging
-
-### Frontend
-- React DevTools
-- Network tab in browser DevTools
-- Vite debug logs
-
-### Backend
-- Structured logging
-- Debug via VS Code debugger
-- Prisma Studio: `npx prisma studio`
-
-## Deployment
-
-The application is designed to be deployed with:
-- Frontend: Vercel, Netlify, or static hosting
-- Backend: AWS, Heroku, DigitalOcean, or any Node.js hosting
-- Database: Managed PostgreSQL service
-
-## Demo Scenarios
-
-1. **Voice → Task**: Speak a task and AI extracts structured information
-2. **Camera → Whiteboard**: Capture whiteboard, extract tasks and assignments
-3. **Document → Summary**: Upload PDF/DOC, get summary and action items
-4. **AI Prioritization**: System calculates task priority intelligently
-5. **Daily Planner**: AI generates optimized daily schedule
-6. **"What should I do now?"**: Get AI recommendation for next task
-7. **Phone ↔ Laptop**: Cross-device workflow with iQOO Office Kit
-
-## Contributing
-
-1. Create a feature branch
-2. Make changes following the guidelines
-3. Write tests for critical paths
-4. Submit pull request
-
-## License
-
-MIT
-
-## Contact
-
-Built for iQOO Hackathon 2026
+Voice / Camera / Text / Documents
+                ↓
+        Local AI Filter
+     MiniLM + ONNX Runtime
+                ↓
+          Actionable?
+          ↙         ↘
+        NO           YES
+        ↓             ↓
+      Ignore       Gemini
+                     ↓
+            Commitment Intelligence
+                     ↓
+             Structured Task
+                     ↓
+                   SQLite
+                     ↓
+               User Review
+                     ↓
+          Confirm / Edit / Ignore
+                     ↓
+          Execute / Laptop Handoff
