@@ -1,15 +1,20 @@
 import { prisma } from "../repositories/prisma";
 import { logger } from "../config/logger";
+import { hashPassword } from "../utils/password";
 
 async function seed() {
   try {
+    const hashedPassword = await hashPassword("password");
+
     // Create demo user
     const user = await prisma.user.upsert({
       where: { email: "demo@example.com" },
-      update: {},
+      update: {
+        password: hashedPassword,
+      },
       create: {
         email: "demo@example.com",
-        password: "$2b$10$Gm8pzr8xfP8m8xfP8m8xfOzDkPvKb9L9L9L9L9L9L9", // bcrypt hashed "password"
+        password: hashedPassword,
         name: "Demo User",
       },
     });

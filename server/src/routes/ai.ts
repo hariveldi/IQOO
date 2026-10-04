@@ -10,13 +10,53 @@ const router = Router();
 
 const taskRepo = new TaskRepository();
 const taskService = new TaskService(taskRepo);
+const aiKey = config.ai.provider === "gemini" 
+  ? config.ai.geminiKey 
+  : config.ai.provider === "xkiro" 
+  ? config.ai.xkiroKey 
+  : config.ai.openaiKey;
+
 const aiProvider = AIProviderFactory.create(
   config.ai.provider,
-  config.ai.provider === "xkiro" ? config.ai.xkiroKey : config.ai.openaiKey,
+  aiKey,
   config.ai.model
 );
 const aiService = new AIService(aiProvider, taskService);
 const aiController = new AIController(aiService, taskService);
+
+// Universal Phone-First AI Action Pipeline
+router.post("/action-pipeline", authenticateToken, (req, res, next) => {
+  aiController.processActionPipeline(req, res).catch(next);
+});
+
+// Office Kit Laptop Sync & Files
+router.get("/office-kit/status", authenticateToken, (req, res, next) => {
+  aiController.getOfficeKitStatus(req, res).catch(next);
+});
+
+router.post("/office-kit/connect", authenticateToken, (req, res, next) => {
+  aiController.connectLaptop(req, res).catch(next);
+});
+
+router.post("/office-kit/heartbeat", authenticateToken, (req, res, next) => {
+  aiController.laptopHeartbeat(req, res).catch(next);
+});
+
+router.post("/office-kit/disconnect", authenticateToken, (req, res, next) => {
+  aiController.disconnectLaptop(req, res).catch(next);
+});
+
+router.post("/office-kit/transfer-task", authenticateToken, (req, res, next) => {
+  aiController.transferTaskToLaptop(req, res).catch(next);
+});
+
+router.get("/office-kit/files", authenticateToken, (req, res, next) => {
+  aiController.getOfficeKitFiles(req, res).catch(next);
+});
+
+router.get("/office-kit/download/:id", authenticateToken, (req, res, next) => {
+  aiController.downloadOfficeKitFile(req, res).catch(next);
+});
 
 // AI Status (Real LLM vs Fallback)
 router.get("/status", authenticateToken, (req, res, next) => {

@@ -1,7 +1,6 @@
 import React, { useState, useCallback } from 'react'
 import { Mic, Camera, FileText, Plus, X } from 'lucide-react'
-import { AdvancedVoiceCapture } from './AdvancedVoiceCapture'
-import { AdvancedImageCapture } from './AdvancedImageCapture'
+import { AIActionHub } from './AIActionHub'
 import { TaskForm } from './TaskForm'
 
 interface CaptureMenuProps {
@@ -10,22 +9,25 @@ interface CaptureMenuProps {
 
 export const CaptureMenu: React.FC<CaptureMenuProps> = ({ onTaskCreated }) => {
   const [isOpen, setIsOpen] = useState(false)
-  const [showVoiceCapture, setShowVoiceCapture] = useState(false)
-  const [showImageCapture, setShowImageCapture] = useState(false)
+  const [showActionHub, setShowActionHub] = useState(false)
+  const [hubMode, setHubMode] = useState<'camera' | 'voice' | 'text'>('camera')
   const [showTaskForm, setShowTaskForm] = useState(false)
 
   const handleVoiceCapture = useCallback(() => {
-    setShowVoiceCapture(true)
+    setHubMode('voice')
+    setShowActionHub(true)
     setIsOpen(false)
   }, [])
 
   const handleImageCapture = useCallback(() => {
-    setShowImageCapture(true)
+    setHubMode('camera')
+    setShowActionHub(true)
     setIsOpen(false)
   }, [])
 
   const handleTextCapture = useCallback(() => {
-    setShowTaskForm(true)
+    setHubMode('text')
+    setShowActionHub(true)
     setIsOpen(false)
   }, [])
 
@@ -79,19 +81,24 @@ export const CaptureMenu: React.FC<CaptureMenuProps> = ({ onTaskCreated }) => {
         </button>
       </div>
 
-      {/* Modal Components - Use Advanced Versions */}
-      {showVoiceCapture && (
-        <AdvancedVoiceCapture
-          onClose={() => setShowVoiceCapture(false)}
-          onSuccess={handleSuccess}
-        />
-      )}
-
-      {showImageCapture && (
-        <AdvancedImageCapture
-          onClose={() => setShowImageCapture(false)}
-          onSuccess={handleSuccess}
-        />
+      {/* AI Action Hub Modal */}
+      {showActionHub && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
+          <div className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl">
+            <button
+              onClick={() => setShowActionHub(false)}
+              className="absolute top-4 right-4 z-10 p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <AIActionHub
+              initialMode={hubMode}
+              onSuccess={() => {
+                handleSuccess()
+              }}
+            />
+          </div>
+        </div>
       )}
 
       {showTaskForm && (

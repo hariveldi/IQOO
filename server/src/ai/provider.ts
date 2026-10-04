@@ -7,6 +7,7 @@ import {
   AIUserContext,
   AIChatMessage,
   AIAction,
+  AICommitment,
   AIProductivityInsight,
   AIDailyBriefing,
   AITaskBreakdown,
@@ -22,8 +23,31 @@ import { ContextBuilder } from "./contextBuilder";
  * Enables swapping OpenAI, Anthropic, Ollama, and deterministic local fallback
  */
 export interface AIProvider {
-  getProviderName(): "openai" | "xkiro" | "local_fallback" | "anthropic" | "ollama";
+  getProviderName(): "openai" | "xkiro" | "local_fallback" | "anthropic" | "ollama" | "gemini";
   isRealAI(): boolean;
+
+  understandAndStructureAction(
+    input: {
+      text?: string;
+      image?: string;
+      mimeType?: string;
+      imageType?: string;
+    },
+    context?: AIUserContext
+  ): Promise<{
+    extractedInfo: {
+      title?: string;
+      summary?: string;
+      keyPoints?: string[];
+      fields?: Record<string, any>;
+      rawText?: string;
+      confidence?: number;
+      commitment?: AICommitment;
+    };
+    action: AIAction;
+    commitment?: AICommitment;
+    reasoning?: string;
+  }>;
 
   processConversation(
     message: string,
@@ -98,14 +122,21 @@ export class AIProviderError extends Error {
 }
 
 /**
- * Helper to clean JSON string from Markdown wrappers
+ * Helper to clean JSON string from Markdown wrappers and surrounding conversational text
  */
 function cleanJsonOutput(raw: string): string {
   let cleaned = raw.trim();
-  if (cleaned.startsWith("```json")) {
-    cleaned = cleaned.replace(/^```json\s*/i, "").replace(/\s*```$/, "");
-  } else if (cleaned.startsWith("```")) {
-    cleaned = cleaned.replace(/^```\s*/, "").replace(/\s*```$/, "");
+  const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (codeBlockMatch) {
+    cleaned = codeBlockMatch[1].trim();
+  }
+  const firstBrace = cleaned.search(/[{\[]/);
+  if (firstBrace !== -1) {
+    const isObject = cleaned[firstBrace] === "{";
+    const lastBrace = isObject ? cleaned.lastIndexOf("}") : cleaned.lastIndexOf("]");
+    if (lastBrace > firstBrace) {
+      cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+    }
   }
   return cleaned.trim();
 }
@@ -176,6 +207,138 @@ export class OpenAIProvider implements AIProvider {
         throw new AIProviderError("The AI provider timed out. Please try again.", "AI_PROVIDER_TIMEOUT", 504);
       }
       throw new AIProviderError(`The AI provider is unavailable: ${errMsg}`, "AI_PROVIDER_UNAVAILABLE", 503);
+    }
+  }
+
+  async understandAndStructureAction(
+    input: {
+      text?: string;
+      image?: string;
+      mimeType?: string;
+      imageType?: string;
+    },
+    context?: AIUserContext
+  ): Promise<{
+    extractedInfo: {
+      title?: string;
+      summary?: string;
+      keyPoints?: string[];
+      fields?: Record<string, any>;
+      rawText?: string;
+      confidence?: number;
+      commitment?: AICommitment;
+    };
+    action: AIAction;
+    commitment?: AICommitment;
+    reasoning?: string;
+  }> {
+    const formattedContext = context ? ContextBuilder.formatContextForPrompt(context) : "";
+    const systemPrompt = `You are the iQOO Phone-First AI Productivity Action Engine.
+Analyze the user input (image, voice transcript, or text command) along with application context, and convert it into a structured digital action and extracted metadata.
+
+${formattedContext}
+
+SUPPORTED ACTION TYPES:
+- "create_task" (or "CREATE_TASK"): Create an actionable task (title, description, priority: "CRITICAL"|"HIGH"|"MEDIUM"|"LOW", deadline: YYYY-MM-DD, estimatedMinutes: number, tags: string[]).
+- "create_csv" (or "CREATE_CSV"): Extract tabular/itemized data into CSV structure (fileName, columns, rows, csvContent).
+- "create_report" (or "CREATE_REPORT"): Generate a formatted Markdown executive report (title, content, keyPoints).
+- "save_note" (or "SAVE_NOTE"): Save raw content/findings as a searchable note (title, content, tags).
+- "send_to_laptop" (or "SEND_TO_LAPTOP"): Package generated data for laptop transfer via Office Kit (fileName, payload, targetDevice: "laptop").
+- "summarize" (or "SUMMARIZE"): Produce a concise summary of the content.
+- "extract_information" (or "EXTRACT_INFORMATION"): Extract key-value fields.
+
+Return a valid JSON object matching:
+{
+  "extractedInfo": {
+    "title": "Short title",
+    "summary": "Executive summary of content",
+    "keyPoints": ["Key point 1", "Key point 2"],
+    "fields": { "Vendor": "...", "Amount": "...", "DueDate": "...", ... },
+    "rawText": "OCR/text extract if applicable",
+    "confidence": 0.95
+  },
+  "action": {
+    "type": "create_task" | "create_csv" | "create_report" | "save_note" | "send_to_laptop" | "update_task" | "summarize" | "extract_information",
+    "description": "Human readable action description",
+    "data": {
+      "title": "...",
+      "description": "...",
+      "priority": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
+      "deadline": "YYYY-MM-DD or ISO",
+      "estimatedMinutes": 30,
+      "tags": ["..."],
+      "fileName": "export.csv",
+      "columns": ["Col1", "Col2"],
+      "rows": [["Val1", "Val2"]],
+      "csvContent": "Col1,Col2\\nVal1,Val2",
+      "content": "...",
+      "payload": "..."
+    }
+  },
+  "reasoning": "Why this action was chosen"
+}`;
+
+    const userPrompt = input.text?.trim() || "Analyze the attached item, extract all important information, and create an appropriate action.";
+    const userContent: any[] = [{ type: "text", text: userPrompt }];
+
+    if (input.image) {
+      const url = input.image.startsWith("data:")
+        ? input.image
+        : `data:${input.mimeType || "image/jpeg"};base64,${input.image}`;
+      userContent.push({
+        type: "image_url",
+        image_url: { url },
+      });
+    }
+
+    try {
+      const raw = await this.callOpenAI(
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent },
+        ],
+        0.2,
+        true
+      );
+      const parsed = JSON.parse(cleanJsonOutput(raw));
+      return {
+        extractedInfo: parsed.extractedInfo || {
+          title: parsed.title || "Extracted Content",
+          summary: parsed.summary || "Content extracted successfully",
+          fields: parsed.fields || {},
+          keyPoints: parsed.keyPoints || [],
+          confidence: parsed.confidence || 0.9,
+        },
+        action: parsed.action || {
+          type: "create_task",
+          description: parsed.description || "Create extracted task",
+          data: parsed.data || {
+            title: parsed.title || "Extracted Task",
+            description: parsed.description || parsed.summary,
+            priority: TaskPriority.HIGH,
+          },
+        },
+        reasoning: parsed.reasoning || "Generated structured action from multimodal input",
+      };
+    } catch (err: any) {
+      logger.error("Failed to understandAndStructureAction via OpenAI:", err);
+      if (err instanceof AIProviderError) throw err;
+      return {
+        extractedInfo: {
+          title: input.text ? input.text.slice(0, 40) : "Captured Item",
+          summary: input.text || "Item captured from camera/voice",
+          confidence: 0.7,
+        },
+        action: {
+          type: "create_task",
+          description: input.text || "Create task from captured item",
+          data: {
+            title: input.text || "New Task",
+            description: input.text || "Captured item",
+            priority: TaskPriority.MEDIUM,
+          },
+        },
+      };
     }
   }
 
@@ -820,8 +983,818 @@ Return JSON:
  * xKiro provider using its OpenAI-compatible Chat Completions API.
  */
 export class XKiroProvider extends OpenAIProvider {
-  constructor(apiKey: string) {
-    super(apiKey, "minimax/minimax-m3:free", "https://api.xkiro.com/v1", "xkiro");
+  constructor(apiKey: string, model: string = process.env.AI_MODEL || "minimax/minimax-m3:free") {
+    super(apiKey, model, "https://api.xkiro.com/v1", "xkiro");
+  }
+}
+
+/**
+ * Real Google Gemini Provider (Gemini 2.5 Flash / Gemini 2.0 Flash / Gemini 1.5 Flash)
+ * Supports multimodal vision + voice/text understanding and structured JSON outputs.
+ */
+export class GeminiProvider implements AIProvider {
+  private apiKey: string;
+  private model: string;
+  private apiBase: string;
+
+  constructor(apiKey: string, model: string = "gemini-flash-lite-latest") {
+    this.apiKey = apiKey;
+    this.model = model || "gemini-flash-lite-latest";
+    this.apiBase = "https://generativelanguage.googleapis.com/v1beta";
+  }
+
+  getProviderName(): "gemini" {
+    return "gemini";
+  }
+
+  isRealAI(): boolean {
+    return true;
+  }
+
+  private async callGemini(
+    contents: any[],
+    systemInstruction?: string,
+    responseFormatJson: boolean = false,
+    temperature: number = 0.2
+  ): Promise<string> {
+    if (!this.apiKey || this.apiKey.trim() === "" || this.apiKey === "your-gemini-api-key-here") {
+      throw new AIProviderError(
+        "GEMINI_API_KEY is not configured in server/.env or root .env. Please configure a valid GEMINI_API_KEY to use Gemini 2.5 Flash.",
+        "AI_PROVIDER_UNAVAILABLE",
+        401
+      );
+    }
+
+    try {
+      const payload: any = {
+        contents,
+        generationConfig: {
+          temperature,
+          maxOutputTokens: 4096,
+          ...(responseFormatJson ? { responseMimeType: "application/json" } : {}),
+        },
+      };
+
+      if (systemInstruction) {
+        payload.systemInstruction = {
+          parts: [{ text: systemInstruction }],
+        };
+      }
+
+      logger.info(`Calling Gemini API with model: ${this.model}`);
+
+      const res = await axios.post(
+        `${this.apiBase}/models/${this.model}:generateContent?key=${this.apiKey}`,
+        payload,
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 40000,
+        }
+      );
+
+      const candidate = res.data?.candidates?.[0];
+      const text = candidate?.content?.parts?.[0]?.text;
+      if (!text) {
+        throw new Error("Empty response returned from Gemini API");
+      }
+      return text;
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const errMsg = err?.response?.data?.error?.message || err?.message || "Gemini request failed";
+      logger.error(`Gemini API error (${this.model}): ${errMsg}`);
+      if (status === 429) {
+        throw new AIProviderError("Gemini API is rate-limited. Please wait a moment and try again.", "AI_PROVIDER_RATE_LIMIT", 429);
+      }
+      if (err?.code === "ECONNABORTED" || /timeout/i.test(errMsg)) {
+        throw new AIProviderError("Gemini API timed out. Please try again.", "AI_PROVIDER_TIMEOUT", 504);
+      }
+      throw new AIProviderError(`Gemini API error: ${errMsg}`, "AI_PROVIDER_UNAVAILABLE", status || 503);
+    }
+  }
+
+  async understandAndStructureAction(
+    input: {
+      text?: string;
+      image?: string;
+      mimeType?: string;
+      imageType?: string;
+    },
+    context?: AIUserContext
+  ): Promise<{
+    extractedInfo: {
+      title?: string;
+      summary?: string;
+      keyPoints?: string[];
+      fields?: Record<string, any>;
+      rawText?: string;
+      confidence?: number;
+      commitment?: AICommitment;
+    };
+    action: AIAction;
+    commitment?: AICommitment;
+    reasoning?: string;
+  }> {
+    const formattedContext = context ? ContextBuilder.formatContextForPrompt(context) : "";
+    const systemPrompt = `You are the iQOO Phone-First AI Productivity Action Engine powered by Gemini.
+Analyze the user's input (image, document, invoice, voice transcript, or text prompt) and convert it into a structured digital action, extracted metadata, and commitment intelligence.
+
+${formattedContext}
+
+SUPPORTED ACTION TYPES:
+- "create_task" (or "CREATE_TASK"): Create an actionable task (title, description, priority: "CRITICAL"|"HIGH"|"MEDIUM"|"LOW", deadline: YYYY-MM-DD, estimatedMinutes: number, tags: string[]).
+- "create_csv" (or "CREATE_CSV"): Extract tabular data into CSV structure (fileName, columns, rows, csvContent).
+- "create_report" (or "CREATE_REPORT"): Generate a formatted Markdown executive report (title, content, keyPoints).
+- "save_note" (or "SAVE_NOTE"): Save raw content/findings as a searchable note (title, content, tags).
+- "send_to_laptop" (or "SEND_TO_LAPTOP"): Package generated data for laptop transfer via Office Kit (fileName, payload, targetDevice: "laptop").
+- "summarize" (or "SUMMARIZE"): Produce a concise summary of the content.
+- "extract_information" (or "EXTRACT_INFORMATION"): Extract key-value fields.
+
+COMMITMENT INTELLIGENCE:
+Evaluate whether the spoken utterance or text represents a concrete user commitment / promise to take action:
+- "isCommitment": true if user promised an action (e.g. "I'll send Rahul the report tomorrow", "I'll meet Sarah at 3 PM", "I'll finish slides on my laptop tonight"). False for past statements ("Rahul sent report yesterday") or passive remarks ("Weather is nice").
+- "owner": "me" (or who made the commitment).
+- "action": Concise action promise (e.g. "Send project report", "Meet with Sarah").
+- "person": Recipient or other party involved (e.g. "Rahul", "Sarah"), or null.
+- "deadline": Specific deadline or date/time (e.g. "Tomorrow at 5 PM", "Friday"), or null.
+- "confidence": 0.0 to 1.0 confidence in commitment detection.
+- "executionType": "message" (promising to send/text/share with someone) | "calendar" (promising to meet/attend/call at specific time) | "laptop" (promising to work on laptop/PC via Office Kit) | "task" (general task execution).
+- "requiresConfirmation": true (all consequential external actions like messaging or calendar require explicit user confirmation).
+- "draftExecution": Prepared execution payload:
+  * For "message": { "type": "message", "title": "Send project report to Rahul", "recipient": "Rahul", "draftText": "Hi Rahul, I'll send you the project report tomorrow." }
+  * For "calendar": { "type": "calendar", "title": "Meeting with Sarah", "eventDate": "YYYY-MM-DD", "eventTime": "15:00", "durationMinutes": 30 }
+  * For "laptop": { "type": "laptop", "title": "Prepare presentation on laptop", "laptopPayload": { "task": "Prepare presentation", "deadline": "Tonight" } }
+  * For "task": { "type": "task", "title": "Task title" }
+
+Return a valid JSON object matching:
+{
+  "extractedInfo": {
+    "title": "Short title",
+    "summary": "Executive summary of content",
+    "keyPoints": ["Key point 1", "Key point 2"],
+    "fields": { "Vendor": "...", "Amount": "...", "DueDate": "...", ... },
+    "rawText": "OCR/text extract if applicable",
+    "confidence": 0.95
+  },
+  "commitment": {
+    "isCommitment": true,
+    "owner": "me",
+    "action": "Send project report",
+    "person": "Rahul",
+    "deadline": "Tomorrow",
+    "confidence": 0.96,
+    "executionType": "message",
+    "requiresConfirmation": true,
+    "draftExecution": {
+      "type": "message",
+      "title": "Send project report to Rahul",
+      "recipient": "Rahul",
+      "draftText": "Hi Rahul, I'll send you the project report tomorrow."
+    }
+  },
+  "action": {
+    "type": "create_task" | "create_csv" | "create_report" | "save_note" | "send_to_laptop" | "update_task" | "summarize" | "extract_information",
+    "description": "Human readable action description",
+    "data": {
+      "title": "...",
+      "description": "...",
+      "priority": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
+      "deadline": "YYYY-MM-DD or ISO",
+      "estimatedMinutes": 30,
+      "tags": ["..."],
+      "fileName": "export.csv",
+      "columns": ["Col1", "Col2"],
+      "rows": [["Val1", "Val2"]],
+      "csvContent": "Col1,Col2\\nVal1,Val2",
+      "content": "...",
+      "payload": "..."
+    }
+  },
+  "reasoning": "Why this action and commitment were chosen"
+}`;
+
+    const parts: any[] = [];
+    const promptText = input.text?.trim() || "Analyze the attached item, extract all important information, and create an appropriate action.";
+    parts.push({ text: promptText });
+
+    if (input.image) {
+      let rawBase64 = input.image;
+      let mime = input.mimeType || "image/jpeg";
+      const match = input.image.match(/^data:([^;]+);base64,(.*)$/);
+      if (match) {
+        mime = match[1];
+        rawBase64 = match[2];
+      }
+      parts.push({
+        inlineData: {
+          mimeType: mime,
+          data: rawBase64,
+        },
+      });
+    }
+
+    try {
+      const raw = await this.callGemini(
+        [{ role: "user", parts }],
+        systemPrompt,
+        true,
+        0.2
+      );
+      const parsed = JSON.parse(cleanJsonOutput(raw));
+      const extractedCommitment = parsed.commitment || parsed.extractedInfo?.commitment;
+
+      return {
+        extractedInfo: parsed.extractedInfo || {
+          title: parsed.title || "Extracted Content",
+          summary: parsed.summary || "Content processed successfully",
+          fields: parsed.fields || {},
+          keyPoints: parsed.keyPoints || [],
+          confidence: parsed.confidence || 0.95,
+          commitment: extractedCommitment,
+        },
+        commitment: extractedCommitment,
+        action: parsed.action || {
+          type: "create_task",
+          description: parsed.description || "Create extracted task",
+          data: parsed.data || {
+            title: parsed.title || "Extracted Task",
+            description: parsed.description || parsed.summary,
+            priority: TaskPriority.HIGH,
+          },
+        },
+        reasoning: parsed.reasoning || "Generated structured action via Gemini multimodal understanding",
+      };
+    } catch (err: any) {
+      logger.error("Failed to understandAndStructureAction via Gemini:", err);
+      if (err instanceof AIProviderError) throw err;
+      throw new AIProviderError(
+        `Gemini Action Engine failed: ${err?.message || "Failed to process multimodal input"}`,
+        "AI_PROVIDER_MALFORMED_OUTPUT",
+        500
+      );
+    }
+  }
+
+  async processConversation(
+    message: string,
+    context: AIUserContext,
+    history: AIChatMessage[] = []
+  ): Promise<AIChatResponse> {
+    const formattedContext = ContextBuilder.formatContextForPrompt(context);
+    const systemPrompt = `You are the iQOO AI Productivity Copilot powered by Gemini.
+You have real-time access to the user's actual database (tasks, projects, dependencies, deadlines, blockers, focus records).
+
+${formattedContext}
+
+CRITICAL INSTRUCTIONS:
+1. ALWAYS reason over the user's REAL database tasks provided above. When referencing tasks, use their actual titles, IDs, priorities, and deadlines.
+2. If the user asks what to work on (e.g., "I have 3 hours tonight", "What should I finish?"), inspect their active tasks, estimate realistic time fit, check blockers, and recommend a prioritized sequence with rationale.
+3. If the user asks to create, update, delete, schedule, or link tasks/projects/dependencies, explain your plan in the message AND generate structured actions in the "actions" array.
+4. Return a valid JSON object matching this schema:
+{
+  "message": "Clear Markdown response",
+  "reasoning": "Brief explanation",
+  "suggestedFollowUps": ["Question 1", "Question 2"],
+  "actions": [
+    {
+      "type": "CREATE_TASK" | "UPDATE_TASK" | "DELETE_TASK" | "CREATE_DEPENDENCY" | "CREATE_PROJECT" | "SCHEDULE_PLAN" | "CREATE_CSV" | "CREATE_REPORT" | "SAVE_NOTE" | "SEND_TO_LAPTOP",
+      "description": "Human readable summary",
+      "data": { ... }
+    }
+  ]
+}`;
+
+    const contents: any[] = [];
+    for (const h of history.slice(-6)) {
+      contents.push({
+        role: h.role === "assistant" ? "model" : "user",
+        parts: [{ text: h.content }],
+      });
+    }
+    contents.push({
+      role: "user",
+      parts: [{ text: message }],
+    });
+
+    try {
+      const raw = await this.callGemini(contents, systemPrompt, true, 0.3);
+      const parsed = JSON.parse(cleanJsonOutput(raw));
+      return {
+        message: parsed.message || raw,
+        actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+        reasoning: parsed.reasoning,
+        suggestedFollowUps: parsed.suggestedFollowUps || [],
+        provider: this.getProviderName(),
+        isFallback: false,
+      };
+    } catch (err: any) {
+      logger.error("Failed to process conversation via Gemini:", err);
+      if (err instanceof AIProviderError) throw err;
+      return {
+        message: `I encountered an issue processing your request: ${err.message}`,
+        provider: this.getProviderName(),
+        isFallback: false,
+      };
+    }
+  }
+
+  async extractPlanFromText(
+    text: string,
+    context?: AIUserContext
+  ): Promise<AIPlan & { actions?: AIAction[] }> {
+    const contextPrompt = context ? ContextBuilder.formatContextForPrompt(context) : "";
+    const systemPrompt = `You are an expert AI productivity planner powered by Gemini.
+Extract a complete project plan from the user's input.
+${contextPrompt}
+
+Output MUST be a valid JSON object matching:
+{
+  "project": "Project Name",
+  "deadline": "2026-09-20T23:59:59Z" (or null if none mentioned),
+  "notes": "Plan summary and strategy",
+  "tasks": [
+    {
+      "title": "Task title",
+      "description": "Optional details",
+      "priority": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
+      "estimatedMinutes": 60,
+      "deadline": "2026-09-20T23:59:59Z",
+      "tags": ["tag1"],
+      "dependencies": []
+    }
+  ]
+}`;
+
+    const raw = await this.callGemini(
+      [{ role: "user", parts: [{ text }] }],
+      systemPrompt,
+      true,
+      0.2
+    );
+
+    const parsed = JSON.parse(cleanJsonOutput(raw));
+    const tasks = Array.isArray(parsed.tasks) ? parsed.tasks : [];
+
+    const actions: AIAction[] = [
+      {
+        type: "CREATE_PROJECT",
+        description: `Create project "${parsed.project || "New Project"}"`,
+        data: {
+          name: parsed.project || "New Project",
+          description: parsed.notes,
+          tempId: "temp_proj_1",
+        },
+      },
+      ...tasks.map((t: any, idx: number) => ({
+        type: "CREATE_TASK" as const,
+        description: `Create task: ${t.title} (${t.priority || "MEDIUM"}, ${t.estimatedMinutes || 60}m)`,
+        data: {
+          ...t,
+          projectId: "temp_proj_1",
+          tempId: `temp_task_${idx + 1}`,
+        },
+      })),
+    ];
+
+    return {
+      project: parsed.project || "New Project",
+      deadline: parsed.deadline ? new Date(parsed.deadline) : undefined,
+      notes: parsed.notes,
+      tasks: tasks.map((t: any) => ({
+        ...t,
+        deadline: t.deadline ? new Date(t.deadline) : undefined,
+      })),
+      actions,
+    };
+  }
+
+  async extractTaskFromText(
+    text: string,
+    context?: AIUserContext
+  ): Promise<TaskExtractionResult> {
+    const contextPrompt = context ? ContextBuilder.formatContextForPrompt(context) : "";
+    const systemPrompt = `You are an AI task extraction specialist powered by Gemini.
+Extract a structured task from the user's voice transcript or natural text.
+Infer missing details intelligently based on context.
+${contextPrompt}
+
+Return JSON:
+{
+  "title": "Clear actionable task title",
+  "description": "Full context and notes",
+  "priority": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
+  "estimatedMinutes": 45,
+  "deadline": "2026-09-20T18:00:00Z",
+  "project": "Associated project name if mentioned",
+  "confidence": 0.95
+}`;
+
+    const raw = await this.callGemini(
+      [{ role: "user", parts: [{ text }] }],
+      systemPrompt,
+      true,
+      0.2
+    );
+    const parsed = JSON.parse(cleanJsonOutput(raw));
+    return {
+      title: parsed.title || text.slice(0, 50),
+      description: parsed.description || text,
+      priority: parsed.priority || TaskPriority.MEDIUM,
+      estimatedMinutes: parsed.estimatedMinutes || 45,
+      deadline: parsed.deadline ? new Date(parsed.deadline) : undefined,
+      project: parsed.project,
+      confidence: parsed.confidence || 0.9,
+    };
+  }
+
+  async extractFromImage(
+    imageBase64: string,
+    imageType?: string
+  ): Promise<TaskExtractionResult> {
+    let rawBase64 = imageBase64;
+    let mime = "image/jpeg";
+    const match = imageBase64.match(/^data:([^;]+);base64,(.*)$/);
+    if (match) {
+      mime = match[1];
+      rawBase64 = match[2];
+    }
+
+    const systemPrompt = `You are an AI vision extraction assistant powered by Gemini.
+Extract structured actionable productivity tasks and key information from this ${imageType || "image"}.
+Return JSON:
+{
+  "title": "Extracted Action Item",
+  "description": "Detailed description of content",
+  "priority": "HIGH",
+  "estimatedMinutes": 45,
+  "confidence": 0.95
+}`;
+
+    try {
+      const raw = await this.callGemini(
+        [
+          {
+            role: "user",
+            parts: [
+              { text: `Extract actionable tasks from this ${imageType || "image"}` },
+              { inlineData: { mimeType: mime, data: rawBase64 } },
+            ],
+          },
+        ],
+        systemPrompt,
+        true,
+        0.2
+      );
+      const parsed = JSON.parse(cleanJsonOutput(raw));
+      return {
+        title: parsed.title || "Task from Image",
+        description: parsed.description || "Image content processed",
+        priority: parsed.priority || TaskPriority.HIGH,
+        estimatedMinutes: parsed.estimatedMinutes || 45,
+        confidence: parsed.confidence || 0.95,
+      };
+    } catch (err: any) {
+      if (err instanceof AIProviderError) throw err;
+      throw new AIProviderError(
+        `Gemini vision extraction failed: ${err?.message || "Failed to extract task from image"}`,
+        "AI_PROVIDER_MALFORMED_OUTPUT",
+        500
+      );
+    }
+  }
+
+  async extractFromDocument(
+    documentContent: string,
+    fileName: string
+  ): Promise<DocumentExtractionResult> {
+    const systemPrompt = `You are an AI document intelligence analyst powered by Gemini.
+Analyze the document "${fileName}" and extract actionable tasks, key decisions, summary, and deadlines.
+Return JSON:
+{
+  "summary": "Concise executive summary of document",
+  "keyPoints": ["Key point 1", "Key point 2"],
+  "actionItems": ["Action 1", "Action 2"],
+  "decisions": ["Decision 1"],
+  "people": ["Name 1"],
+  "tasks": [
+    {
+      "title": "Action title",
+      "priority": "HIGH",
+      "estimatedMinutes": 45
+    }
+  ]
+}`;
+
+    const raw = await this.callGemini(
+      [{ role: "user", parts: [{ text: `Document content for "${fileName}":\n\n${documentContent}` }] }],
+      systemPrompt,
+      true,
+      0.2
+    );
+    const parsed = JSON.parse(cleanJsonOutput(raw));
+    return {
+      summary: parsed.summary || "Document processed successfully.",
+      keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints : [],
+      actionItems: Array.isArray(parsed.actionItems) ? parsed.actionItems : [],
+      decisions: Array.isArray(parsed.decisions) ? parsed.decisions : [],
+      people: Array.isArray(parsed.people) ? parsed.people : [],
+      tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
+    };
+  }
+
+  async generateTaskRecommendation(context: AIUserContext): Promise<{
+    reason: string;
+    whyThisTask: string;
+    riskIfDelayed: string;
+    expectedTime: string;
+    blockersExplanation: string;
+    nextAfterThis?: string;
+  }> {
+    const formattedContext = ContextBuilder.formatContextForPrompt(context);
+    const systemPrompt = `You are an executive productivity strategist powered by Gemini.
+Recommend the single highest-leverage task to execute right now.
+${formattedContext}
+
+Return JSON:
+{
+  "reason": "Clear, direct reason why this task is the #1 priority right now.",
+  "whyThisTask": "Strategic justification based on dependencies and impact.",
+  "riskIfDelayed": "Concrete risk if postponed.",
+  "expectedTime": "Estimated duration formatted nicely (e.g. '45 mins')",
+  "blockersExplanation": "Status of prerequisite tasks or downstream unblocks.",
+  "nextAfterThis": "The logical subsequent task to execute next."
+}`;
+
+    const raw = await this.callGemini(
+      [{ role: "user", parts: [{ text: "What should I do right now?" }] }],
+      systemPrompt,
+      true,
+      0.2
+    );
+    const parsed = JSON.parse(cleanJsonOutput(raw));
+    return {
+      reason: parsed.reason || "Highest leverage unblocked task based on priority and deadline.",
+      whyThisTask: parsed.whyThisTask || "Immediate impact on downstream deliverables.",
+      riskIfDelayed: parsed.riskIfDelayed || "Downstream milestones will be delayed.",
+      expectedTime: parsed.expectedTime || "45 mins",
+      blockersExplanation: parsed.blockersExplanation || "No unresolved blockers.",
+      nextAfterThis: parsed.nextAfterThis,
+    };
+  }
+
+  async generateInsights(context: AIUserContext): Promise<AIProductivityInsight[]> {
+    const formattedContext = ContextBuilder.formatContextForPrompt(context);
+    const systemPrompt = `You are an AI productivity coach powered by Gemini.
+Analyze the user's workload, blocked tasks, focus trends, and completion rate.
+${formattedContext}
+
+Return JSON:
+{
+  "insights": [
+    {
+      "title": "Short catchy insight title",
+      "insight": "Data-backed observation on their work patterns or risks.",
+      "type": "WARNING" | "SUCCESS" | "RECOMMENDATION" | "NEUTRAL",
+      "metricSource": "e.g. Completion Rate, Blockers Graph, Overdue Count",
+      "actionableSuggestion": "Specific action user can take right now."
+    }
+  ]
+}`;
+
+    const raw = await this.callGemini(
+      [{ role: "user", parts: [{ text: "Generate personalized productivity insights." }] }],
+      systemPrompt,
+      true,
+      0.3
+    );
+    const parsed = JSON.parse(cleanJsonOutput(raw));
+    return Array.isArray(parsed.insights) ? parsed.insights : [];
+  }
+
+  async breakdownTask(
+    taskTitle: string,
+    description?: string,
+    context?: AIUserContext
+  ): Promise<AITaskBreakdown> {
+    const contextPrompt = context ? ContextBuilder.formatContextForPrompt(context) : "";
+    const systemPrompt = `You are an AI task decomposition expert powered by Gemini.
+Break down the given task into 3-6 concrete, sequential subtasks.
+${contextPrompt}
+
+Task: "${taskTitle}"
+Description: "${description || "None"}"
+
+Return JSON:
+{
+  "originalTask": "${taskTitle}",
+  "subtasks": [
+    {
+      "title": "Subtask title",
+      "description": "Brief instruction",
+      "estimatedMinutes": 30,
+      "priority": "HIGH" | "MEDIUM" | "LOW",
+      "dependsOnPrevious": true
+    }
+  ]
+}`;
+
+    const raw = await this.callGemini(
+      [{ role: "user", parts: [{ text: `Break down task: "${taskTitle}"` }] }],
+      systemPrompt,
+      true,
+      0.2
+    );
+    const parsed = JSON.parse(cleanJsonOutput(raw));
+    const subtasks = Array.isArray(parsed.subtasks) ? parsed.subtasks : [];
+
+    const actions: AIAction[] = subtasks.map((s: any, idx: number) => ({
+      type: "CREATE_TASK" as const,
+      description: `Create subtask: ${s.title} (${s.estimatedMinutes || 30}m)`,
+      data: {
+        title: s.title,
+        description: s.description,
+        estimatedMinutes: s.estimatedMinutes || 30,
+        priority: s.priority || TaskPriority.MEDIUM,
+        tempId: `subtask_${idx + 1}`,
+        dependencies: s.dependsOnPrevious && idx > 0 ? [`subtask_${idx}`] : [],
+      },
+    }));
+
+    return {
+      originalTask: taskTitle,
+      subtasks,
+      actions,
+      provider: this.getProviderName(),
+      isFallback: false,
+    };
+  }
+
+  async estimateDuration(
+    taskTitle: string,
+    description?: string,
+    context?: AIUserContext
+  ): Promise<{ estimatedMinutes: number; confidence: number; rationale: string }> {
+    const contextPrompt = context ? ContextBuilder.formatContextForPrompt(context) : "";
+    const systemPrompt = `You are an AI task estimation specialist powered by Gemini.
+Estimate realistic completion time for this task based on historical complexity and context.
+${contextPrompt}
+
+Task: "${taskTitle}"
+Description: "${description || "None"}"
+
+Return JSON:
+{
+  "estimatedMinutes": 45,
+  "confidence": 0.85,
+  "rationale": "Explanation for the estimate based on scope and historical patterns."
+}`;
+
+    const raw = await this.callGemini(
+      [{ role: "user", parts: [{ text: `Estimate duration for: "${taskTitle}"` }] }],
+      systemPrompt,
+      true,
+      0.2
+    );
+    const parsed = JSON.parse(cleanJsonOutput(raw));
+    return {
+      estimatedMinutes: typeof parsed.estimatedMinutes === "number" ? parsed.estimatedMinutes : 45,
+      confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.85,
+      rationale: parsed.rationale || "Calculated based on average task complexity.",
+    };
+  }
+
+  async generateProjectReview(
+    projectId: string,
+    projectName: string,
+    tasks: any[] = [],
+    context?: AIUserContext
+  ): Promise<AIProjectReview> {
+    const contextPrompt = context ? ContextBuilder.formatContextForPrompt(context) : "";
+    const systemPrompt = `You are an AI technical project manager powered by Gemini.
+Analyze the project "${projectName}" (ID: ${projectId}) with ${tasks.length} tasks.
+${contextPrompt}
+
+Return JSON:
+{
+  "healthStatus": "HEALTHY" | "AT_RISK" | "BLOCKED" | "ON_TRACK",
+  "healthPercentage": 82,
+  "executiveSummary": "Concise summary of project health and trajectory.",
+  "bottlenecks": ["Bottleneck 1", "Bottleneck 2"],
+  "recommendations": ["Recommendation 1", "Recommendation 2"],
+  "criticalPath": ["Task 1", "Task 2"],
+  "estimatedRemainingMinutes": 320
+}`;
+
+    const raw = await this.callGemini(
+      [{ role: "user", parts: [{ text: `Review project "${projectName}" with ${tasks.length} tasks.` }] }],
+      systemPrompt,
+      true,
+      0.2
+    );
+    const parsed = JSON.parse(cleanJsonOutput(raw));
+    return {
+      projectId,
+      projectName,
+      healthStatus: parsed.healthStatus || "ON_TRACK",
+      healthPercentage: typeof parsed.healthPercentage === "number" ? parsed.healthPercentage : 80,
+      executiveSummary: parsed.executiveSummary || "Project is advancing steadily with active tasks.",
+      bottlenecks: Array.isArray(parsed.bottlenecks) ? parsed.bottlenecks : [],
+      recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : [],
+      criticalPath: Array.isArray(parsed.criticalPath) ? parsed.criticalPath : [],
+      estimatedRemainingMinutes: typeof parsed.estimatedRemainingMinutes === "number" ? parsed.estimatedRemainingMinutes : 120,
+      provider: this.getProviderName(),
+      isFallback: false,
+    };
+  }
+
+  async generateDailyBriefing(context?: AIUserContext): Promise<AIDailyBriefing> {
+    const formattedContext = context ? ContextBuilder.formatContextForPrompt(context) : "";
+    const systemPrompt = `You are an AI chief of staff powered by Gemini.
+Generate an executive daily briefing for the user's workday.
+${formattedContext}
+
+Return JSON:
+{
+  "greeting": "Good morning / afternoon",
+  "summary": "Executive summary of what today looks like.",
+  "topAction": {
+    "title": "Single most critical task",
+    "why": "Strategic reason",
+    "unlocks": "What downstream work this unblocks"
+  },
+  "suggestedSchedule": [
+    {
+      "timeSlot": "09:00 - 10:30",
+      "taskTitle": "Task Name",
+      "durationMinutes": 90
+    }
+  ],
+  "deadlineAlerts": [
+    {
+      "title": "Task due soon",
+      "deadline": "Today 5 PM",
+      "urgency": "HIGH"
+    }
+  ]
+}`;
+
+    const raw = await this.callGemini(
+      [{ role: "user", parts: [{ text: "Generate my daily executive briefing." }] }],
+      systemPrompt,
+      true,
+      0.2
+    );
+    const parsed = JSON.parse(cleanJsonOutput(raw));
+    const activeTasks = context?.activeTasks || [];
+    return {
+      greeting: parsed.greeting || "Welcome to your productivity copilot",
+      summary: parsed.summary || `You have ${activeTasks.length} active tasks scheduled.`,
+      totalTasksToday: activeTasks.length,
+      dueTodayCount: activeTasks.filter((t) => t.deadline).length,
+      overdueCount: context?.overdueTasksCount || 0,
+      blockedCount: activeTasks.filter((t) => t.isBlocked).length,
+      estimatedWorkHours: Math.round(activeTasks.reduce((s, t) => s + (t.estimatedMinutes || 30), 0) / 60),
+      availableHours: context?.availableHoursTonight || 8,
+      topAction: parsed.topAction || null,
+      suggestedSchedule: Array.isArray(parsed.suggestedSchedule) ? parsed.suggestedSchedule : [],
+      deadlineAlerts: Array.isArray(parsed.deadlineAlerts) ? parsed.deadlineAlerts : [],
+      provider: this.getProviderName(),
+      isFallback: false,
+    };
+  }
+
+  async generateWeeklyReview(context?: AIUserContext): Promise<AIWeeklyReview> {
+    const formattedContext = context ? ContextBuilder.formatContextForPrompt(context) : "";
+    const systemPrompt = `You are a high-performance productivity coach powered by Gemini.
+Analyze the user's completed tasks, overdue load, and focus metrics to produce a weekly review.
+${formattedContext}
+
+Return JSON:
+{
+  "summary": "Executive summary of weekly performance and trends.",
+  "completionVelocity": "e.g. 14 tasks completed (+20% vs baseline)",
+  "topBottleneckProject": "Project name that had most blockers/delays",
+  "actionableChanges": ["Change 1", "Change 2", "Change 3"],
+  "productivityScore": 85
+}`;
+
+    const raw = await this.callGemini(
+      [{ role: "user", parts: [{ text: "Generate my weekly productivity review." }] }],
+      systemPrompt,
+      true,
+      0.3
+    );
+    const parsed = JSON.parse(cleanJsonOutput(raw));
+    return {
+      summary: parsed.summary || `You completed ${context?.completedTasksCount || 0} tasks with ${context?.overdueTasksCount || 0} overdue.`,
+      completionVelocity: parsed.completionVelocity || `${context?.completedTasksCount || 0} tasks completed`,
+      topBottleneckProject: parsed.topBottleneckProject || undefined,
+      actionableChanges: Array.isArray(parsed.actionableChanges) ? parsed.actionableChanges : [],
+      productivityScore: typeof parsed.productivityScore === "number" ? parsed.productivityScore : 78,
+      provider: this.getProviderName(),
+      isFallback: false,
+    };
   }
 }
 
@@ -836,6 +1809,264 @@ export class LocalAIProvider implements AIProvider {
 
   isRealAI(): boolean {
     return false;
+  }
+
+  async understandAndStructureAction(
+    input: {
+      text?: string;
+      image?: string;
+      mimeType?: string;
+      imageType?: string;
+    },
+    _context?: AIUserContext
+  ): Promise<{
+    extractedInfo: {
+      title?: string;
+      summary?: string;
+      keyPoints?: string[];
+      fields?: Record<string, any>;
+      rawText?: string;
+      confidence?: number;
+      commitment?: AICommitment;
+    };
+    action: AIAction;
+    commitment?: AICommitment;
+    reasoning?: string;
+  }> {
+    const text = (input.text || "").trim();
+    const lower = text.toLowerCase();
+
+    // Check for conversational commitment first
+    const isPromise = /^(i'll|i will|i'm going to|i am going to|we'll|we will|let me|promise to)/i.test(text) ||
+                      /(?:send|meet|sync with)\s+(?!(?:to|the|a|this|my|our|laptop|pc|office)\b)([A-Za-z]+)/i.test(text);
+
+    // 1. Check for CSV / Tabular intent
+    if (!isPromise && (lower.includes("csv") || lower.includes("table") || lower.includes("spreadsheet") || lower.includes("excel"))) {
+      const columns = ["Item", "Quantity", "Unit Price", "Total Amount"];
+      const rows = [
+        ["Product/Service A", "1", "₹2,500", "₹2,500"],
+        ["Product/Service B", "2", "₹1,250", "₹2,500"],
+      ];
+      const csvContent = "Item,Quantity,Unit Price,Total Amount\nProduct/Service A,1,₹2500,₹2500\nProduct/Service B,2,₹1250,₹2500";
+      return {
+        extractedInfo: {
+          title: "Structured Data Extraction (CSV)",
+          summary: text ? `Extracted tabular dataset for: ${text}` : "Extracted tabular data from input",
+          keyPoints: ["Generated clean CSV format", "Included calculated item totals"],
+          fields: {
+            Format: "CSV",
+            RowsCount: 2,
+            ColumnsCount: 4,
+          },
+          confidence: 0.9,
+        },
+        action: {
+          type: "create_csv",
+          description: "Generate structured CSV document",
+          data: {
+            fileName: "extracted_productivity_data.csv",
+            columns,
+            rows,
+            csvContent,
+            summary: "Extracted tabular CSV data",
+          },
+        },
+        reasoning: "Detected tabular / CSV generation request.",
+      };
+    }
+
+    // 2. Check for Report intent
+    if (!isPromise && (lower.startsWith("analyze this document and create a formal executive report") || lower.startsWith("analyze this document and create a report") || lower.startsWith("create report") || lower.startsWith("generate report") || lower.includes("formal summary"))) {
+      const reportTitle = text.replace(/create|generate|report|a|an|the/gi, "").trim() || "Executive Productivity Report";
+      const content = `# ${reportTitle}\n\n**Date**: ${new Date().toLocaleDateString()}\n**Status**: Verified\n\n## Executive Summary\n${text || "Visual document analysis and actionable items summary."}\n\n## Key Findings\n- Itemized deliverables extracted and prioritized\n- Critical milestones and ownership defined\n\n## Action Items\n- [ ] Review detailed deliverables\n- [ ] Execute primary tasks`;
+      return {
+        extractedInfo: {
+          title: reportTitle,
+          summary: `Executive briefing compiled from input: ${text}`,
+          keyPoints: ["Key deliverables outlined", "Actionable checklists generated"],
+          confidence: 0.92,
+        },
+        action: {
+          type: "create_report",
+          description: `Create executive report: ${reportTitle}`,
+          data: {
+            title: reportTitle,
+            content,
+            fileName: `${reportTitle.toLowerCase().replace(/\s+/g, "_")}.md`,
+            summary: "Executive productivity report",
+          },
+        },
+        reasoning: "Detected formal report generation request.",
+      };
+    }
+
+    // 3. Check for Note intent
+    if (!isPromise && (lower.startsWith("save this meeting note") || lower.startsWith("save note") || lower.startsWith("remember") || lower.startsWith("save this"))) {
+      const noteTitle = text.replace(/save|note|remember|this|as/gi, "").trim() || "Captured Quick Note";
+      return {
+        extractedInfo: {
+          title: noteTitle,
+          summary: text,
+          confidence: 0.88,
+        },
+        action: {
+          type: "save_note",
+          description: `Save note: "${noteTitle}"`,
+          data: {
+            title: noteTitle,
+            content: text || "Captured content from camera/voice.",
+            tags: ["ai_note", "phone_captured"],
+          },
+        },
+        reasoning: "Detected save note intent.",
+      };
+    }
+
+    // 4. Check for Laptop / Office Kit transfer intent
+    if (!isPromise && (lower.includes("send to laptop via office kit") || lower.includes("transfer to laptop") || lower.includes("sync to pc"))) {
+      return {
+        extractedInfo: {
+          title: "Office Kit Transfer",
+          summary: `Synchronizing payload to laptop: ${text}`,
+          confidence: 0.95,
+        },
+        action: {
+          type: "send_to_laptop",
+          description: "Sync digital asset to Laptop via Office Kit",
+          data: {
+            fileName: `laptop_transfer_${Date.now()}.txt`,
+            payload: text || "Office Kit: Document ready for laptop sync.",
+            targetDevice: "laptop",
+          },
+        },
+        reasoning: "Detected Office Kit laptop transfer request.",
+      };
+    }
+
+    // 5. Default: High-Quality Structured Task Creation
+    let priority = TaskPriority.MEDIUM;
+    if (lower.includes("critical") || lower.includes("urgent") || lower.includes("p0")) {
+      priority = TaskPriority.CRITICAL;
+    } else if (lower.includes("high") || lower.includes("important") || lower.includes("asap")) {
+      priority = TaskPriority.HIGH;
+    } else if (lower.includes("low")) {
+      priority = TaskPriority.LOW;
+    }
+
+    // Detect deadline
+    let deadline: string | undefined = undefined;
+    if (lower.includes("tomorrow")) {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      deadline = d.toISOString();
+    } else if (lower.includes("friday")) {
+      const d = new Date();
+      const currentDay = d.getDay();
+      const distance = (5 + 7 - currentDay) % 7 || 7;
+      d.setDate(d.getDate() + distance);
+      deadline = d.toISOString();
+    } else if (lower.includes("today") || lower.includes("tonight")) {
+      const d = new Date();
+      d.setHours(23, 59, 59, 999);
+      deadline = d.toISOString();
+    }
+
+    // Extract invoice fields if invoice keywords present
+    const isInvoice = lower.includes("invoice") || lower.includes("vendor") || lower.includes("bill") || lower.includes("amount") || lower.includes("₹") || lower.includes("$");
+    const fields: Record<string, any> = {};
+    if (isInvoice) {
+      const amountMatch = text.match(/(?:₹|\$|rs\.?|inr)\s*(\d+(?:,\d+)*(?:\.\d+)?)/i) || text.match(/(\d+)\s*(?:rupees|dollars|inr)/i);
+      if (amountMatch) fields["Amount"] = amountMatch[0];
+      const vendorMatch = text.match(/(?:vendor|from|by|to)\s*([A-Za-z0-9\s&]+?)(?:,|;|\.|\s+amount|\s+for|$)/i);
+      if (vendorMatch) fields["Vendor"] = vendorMatch[1].trim();
+      if (deadline) fields["DueDate"] = new Date(deadline).toLocaleDateString();
+    }
+
+    let title = text
+      .replace(/^create\s+(?:a\s+)?(?:task|todo)\s+(?:called\s+|to\s+)?/i, "")
+      .replace(/^extract\s+(?:the\s+)?(?:important\s+)?(?:information|info)\s+(?:and\s+create\s+a\s+task)?/i, "")
+      .replace(/^look\s+at\s+this\s+document\s+and\s+/i, "")
+      .trim();
+
+    if (!title || title.length < 3) {
+      title = isInvoice ? "Pay invoice & verify vendor billing" : (input.image ? "Process captured document" : "Productivity Action Item");
+    }
+
+    const description = isInvoice && Object.keys(fields).length > 0
+      ? Object.entries(fields).map(([k, v]) => `${k}: ${v}`).join("; ")
+      : (text || "Extracted from phone capture");
+
+    // Commitment Intelligence heuristic
+    let commitment: AICommitment | undefined = undefined;
+
+    if (isPromise) {
+      let executionType: "message" | "calendar" | "laptop" | "task" = "task";
+      let person: string | null = null;
+      const personMatch = text.match(/(?:send|meet|call|tell|email|sync with|to|with)\s+([A-Z][a-z]+)/i);
+      if (personMatch && !["tomorrow", "friday", "monday", "today", "tonight", "laptop", "office"].includes(personMatch[1].toLowerCase())) {
+        person = personMatch[1];
+      }
+
+      if (lower.includes("laptop") || lower.includes("pc") || lower.includes("desktop")) {
+        executionType = "laptop";
+      } else if (lower.includes("send") || lower.includes("email") || lower.includes("text") || lower.includes("message") || lower.includes("whatsapp")) {
+        executionType = "message";
+      } else if (lower.includes("meet") || lower.includes("sync") || lower.includes("call") || lower.includes("appointment") || lower.includes("calendar") || lower.includes("pm") || lower.includes("am")) {
+        executionType = "calendar";
+      }
+
+      const draftTitle = person ? `${title} for ${person}` : title;
+      const draftText = person
+        ? `Hi ${person}, ${text.replace(/^i'll/i, "I'll")}.`
+        : `Commitment: ${text}`;
+
+      commitment = {
+        isCommitment: true,
+        owner: "me",
+        action: title,
+        person,
+        deadline: lower.includes("tomorrow") ? "tomorrow" : (deadline ? new Date(deadline).toLocaleString() : null),
+        confidence: 0.95,
+        executionType,
+        requiresConfirmation: true,
+        draftExecution: {
+          type: executionType,
+          title: draftTitle,
+          recipient: person || undefined,
+          draftText,
+          eventDate: deadline ? new Date(deadline).toISOString().split("T")[0] : null,
+          eventTime: "15:00",
+          durationMinutes: 30,
+          laptopPayload: executionType === "laptop" ? { task: title, deadline } : undefined,
+        },
+      };
+    }
+
+    return {
+      extractedInfo: {
+        title,
+        summary: `Action item: ${title}`,
+        keyPoints: [description],
+        fields: Object.keys(fields).length > 0 ? fields : undefined,
+        confidence: 0.85,
+        commitment,
+      },
+      commitment,
+      action: {
+        type: "create_task",
+        description: `Create task: "${title}" (${priority} priority)`,
+        data: {
+          title,
+          description,
+          priority,
+          deadline,
+          estimatedMinutes: 45,
+          tags: isInvoice ? ["invoice", "finance", "phone_captured"] : ["ai_captured", "phone_first", "commitment"],
+          commitment,
+        },
+      },
+      reasoning: isInvoice ? "Extracted invoice/financial action item." : "Converted user request into actionable task with commitment intelligence.",
+    };
   }
 
   async processConversation(
@@ -1388,31 +2619,51 @@ export class LocalAIProvider implements AIProvider {
  */
 export class AIProviderFactory {
   static create(providerName?: string, apiKey?: string, model?: string): AIProvider {
-    const requested = (providerName || process.env.AI_PROVIDER || "local").toLowerCase();
-    const configuredModel = model || process.env.AI_MODEL || (requested === "xkiro" ? "minimax/minimax-m3:free" : "gpt-4o-mini");
+    const requested = (providerName || process.env.AI_PROVIDER || "gemini").toLowerCase();
+    const configuredModel = model || process.env.AI_MODEL;
 
-    if (requested === "xkiro") {
-      const key = apiKey || process.env.XKIRO_API_KEY;
-      if (key) {
-        logger.info("Initialized XKiroProvider with model minimax/minimax-m3:free");
-        return new XKiroProvider(key);
-      }
-      logger.warn("xKiro provider requested but XKIRO_API_KEY is not set. Falling back to LocalAIProvider.");
-      return new LocalAIProvider();
+    // 1. Gemini Priority
+    const geminiKey = (requested === "gemini" ? apiKey : undefined) || process.env.GEMINI_API_KEY;
+    if (requested === "gemini") {
+      const geminiModel = configuredModel || "gemini-flash-lite-latest";
+      logger.info(`Initialized Real GeminiProvider with model ${geminiModel}`);
+      return new GeminiProvider(geminiKey || "", geminiModel);
+    }
+    if (geminiKey && !apiKey && requested !== "openai" && requested !== "xkiro") {
+      const geminiModel = configuredModel || "gemini-flash-lite-latest";
+      logger.info(`Initialized Real GeminiProvider with model ${geminiModel}`);
+      return new GeminiProvider(geminiKey, geminiModel);
     }
 
-    const key = apiKey || process.env.OPENAI_API_KEY;
-
-    if (requested === "openai" || key) {
-      if (key) {
-        logger.info(`Initialized Real OpenAIProvider with model ${configuredModel}`);
-        return new OpenAIProvider(key, configuredModel);
+    // 2. xKiro
+    const xkiroKey = (requested === "xkiro" ? apiKey : undefined) || process.env.XKIRO_API_KEY;
+    if (requested === "xkiro" || (xkiroKey && !apiKey && requested !== "openai")) {
+      if (xkiroKey) {
+        const xkiroModel = configuredModel || "qwen/qwen3.8-omni-flash:free";
+        logger.info(`Initialized XKiroProvider with model ${xkiroModel}`);
+        return new XKiroProvider(xkiroKey, xkiroModel);
       }
-      logger.warn("OpenAI provider requested but OPENAI_API_KEY is not set. Falling back to LocalAIProvider.");
+      if (requested === "xkiro") {
+        logger.warn("xKiro provider requested but XKIRO_API_KEY is not set. Falling back to LocalAIProvider.");
+      }
     }
 
-    logger.info(`Initialized LocalAIProvider (Deterministic Local Fallback; OPENAI_API_KEY=${key ? "set" : "missing"})`);
+    // 3. OpenAI
+    const openaiKey = (requested === "openai" ? apiKey : undefined) || process.env.OPENAI_API_KEY;
+    if (requested === "openai" || openaiKey) {
+      if (openaiKey) {
+        const openaiModel = configuredModel || "gpt-4o-mini";
+        logger.info(`Initialized Real OpenAIProvider with model ${openaiModel}`);
+        return new OpenAIProvider(openaiKey, openaiModel);
+      }
+      if (requested === "openai") {
+        logger.warn("OpenAI provider requested but OPENAI_API_KEY is not set. Falling back to LocalAIProvider.");
+      }
+    }
+
+    logger.info(`Initialized LocalAIProvider (Deterministic Local Fallback)`);
     return new LocalAIProvider();
   }
 }
+
 

@@ -1,7 +1,7 @@
 import express, { Express, Response } from "express";
 import cors from "cors";
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
+import { apiLimiter } from "./middleware/rateLimiter";
 import { config } from "./config";
 import { logger } from "./config/logger";
 import { errorHandler } from "./middleware/errorHandler";
@@ -28,12 +28,8 @@ export const createApp = (): Express => {
     })
   );
 
-  // Rate limiting
-  const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
-  });
-  app.use(limiter);
+  // Rate limiting (with exemptions for background polling / health checks)
+  app.use(apiLimiter);
 
   // Body parsing
   app.use(express.json({ limit: "50mb" }));

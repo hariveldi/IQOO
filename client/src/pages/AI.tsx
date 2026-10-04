@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, Mic, Sparkles, Check, X, ShieldAlert, Cpu, Database, Play } from 'lucide-react'
+import { Send, Mic, Sparkles, Check, X, ShieldAlert, Cpu, Database, Play, Zap, MessageSquare } from 'lucide-react'
 import { apiClient } from '../services/api'
 import { AIAction, AIChatResponse } from '@iqoo/shared'
 import { AdvancedVoiceCapture } from '../components/AdvancedVoiceCapture'
+import { AIActionHub } from '../components/AIActionHub'
 import { useLocation } from 'react-router-dom'
 
 interface Message {
@@ -128,6 +129,8 @@ export default function AIPage() {
     }
   }
 
+  const [activeView, setActiveView] = useState<'pipeline' | 'chat'>('pipeline')
+
   const promptSuggestions = [
     "What should I do right now and why?",
     "Create a task: Review Q3 engineering spec by Friday 5pm, 45m, high priority",
@@ -136,43 +139,81 @@ export default function AIPage() {
   ]
 
   return (
-    <div className="w-full max-w-4xl mx-auto flex flex-col h-[calc(100vh-5rem)] bg-slate-50 border border-slate-200 rounded-2xl shadow-sm overflow-hidden my-4">
-      {/* Header with Provider & DB context Badges */}
-      <div className="p-4 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-sm">
-            <Sparkles size={18} />
-          </div>
-          <div>
-            <h1 className="text-base font-semibold text-slate-900 flex items-center gap-2">
-              AI Productivity Copilot
-            </h1>
-            <p className="text-xs text-slate-500">Autonomous context-aware reasoning & action engine</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <Database size={13} />
-            <span>DB Context Active</span>
-          </div>
-          {aiStatus && (
-            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
-              aiStatus.provider === 'openai' 
-                ? 'bg-blue-50 text-blue-700 border-blue-200' 
-                : 'bg-amber-50 text-amber-700 border-amber-200'
-            }`}>
-              <Cpu size={13} />
-              <span>
-                {aiStatus.provider === 'openai' ? `OpenAI (${aiStatus.model})` : `Local Provider (Deterministic)`}
-              </span>
-            </div>
-          )}
-        </div>
+    <div className="w-full max-w-4xl mx-auto flex flex-col min-h-[calc(100vh-5rem)] pb-12">
+      {/* View Switcher Bar */}
+      <div className="flex items-center justify-between p-1.5 bg-slate-200/80 rounded-2xl mb-4">
+        <button
+          onClick={() => setActiveView('pipeline')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+            activeView === 'pipeline'
+              ? 'bg-white text-blue-600 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Zap className="w-4 h-4" />
+          <span>Phone Action Engine (Camera / Voice / Files)</span>
+        </button>
+        <button
+          onClick={() => setActiveView('chat')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+            activeView === 'chat'
+              ? 'bg-white text-blue-600 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <MessageSquare className="w-4 h-4" />
+          <span>Copilot Chat & Strategy</span>
+        </button>
       </div>
 
-      {/* Chat Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      {activeView === 'pipeline' ? (
+        <div className="space-y-4">
+          <AIActionHub />
+        </div>
+      ) : (
+        <div className="flex flex-col h-[calc(100vh-10rem)] bg-slate-50 border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+          {/* Header with Provider & DB context Badges */}
+          <div className="p-4 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-sm">
+                <Sparkles size={18} />
+              </div>
+              <div>
+                <h1 className="text-base font-semibold text-slate-900 flex items-center gap-2">
+                  AI Productivity Copilot
+                </h1>
+                <p className="text-xs text-slate-500">Autonomous context-aware reasoning & action engine</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <Database size={13} />
+                <span>DB Context Active</span>
+              </div>
+              {aiStatus && (
+                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
+                  aiStatus.provider === 'gemini'
+                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    : aiStatus.provider === 'openai' 
+                    ? 'bg-purple-50 text-purple-700 border-purple-200' 
+                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                }`}>
+                  <Cpu size={13} />
+                  <span>
+                    {aiStatus.provider === 'gemini' 
+                      ? `Gemini (${aiStatus.model})`
+                      : aiStatus.provider === 'openai' 
+                      ? `OpenAI (${aiStatus.model})` 
+                      : `Local Provider (Deterministic)`}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Chat Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((message) => (
           <div
             key={message.id}
@@ -350,6 +391,8 @@ export default function AIPage() {
           </button>
         </form>
       </div>
+      </div>
+      )}
 
       {/* Voice Capture Modal */}
       {showVoice && (

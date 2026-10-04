@@ -259,6 +259,61 @@ class ApiClient {
     return response.data
   }
 
+  async processActionPipeline(payload: {
+    text?: string
+    image?: string
+    mimeType?: string
+    imageType?: string
+    autoExecute?: boolean
+  }) {
+    const response = await this.client.post('/ai/action-pipeline', payload)
+    return response.data
+  }
+
+  async getOfficeKitStatus() {
+    const response = await this.client.get('/ai/office-kit/status')
+    return response.data
+  }
+
+  async connectLaptop(deviceName?: string, deviceId?: string) {
+    const response = await this.client.post('/ai/office-kit/connect', { deviceName, deviceId })
+    return response.data
+  }
+
+  async laptopHeartbeat(deviceName?: string, deviceId?: string) {
+    const response = await this.client.post('/ai/office-kit/heartbeat', { deviceName, deviceId })
+    return response.data
+  }
+
+  async disconnectLaptop() {
+    const response = await this.client.post('/ai/office-kit/disconnect')
+    return response.data
+  }
+
+  async transferTaskToLaptop(taskData: {
+    taskId?: string
+    title: string
+    description?: string
+    priority?: string
+    deadline?: string
+    status?: string
+  }) {
+    const response = await this.client.post('/ai/office-kit/transfer-task', taskData)
+    return response.data
+  }
+
+  async getOfficeKitFiles() {
+    const response = await this.client.get('/ai/office-kit/files')
+    return response.data
+  }
+
+  async downloadOfficeKitFile(id: string) {
+    const response = await this.client.get(`/ai/office-kit/download/${id}`, {
+      responseType: 'blob',
+    })
+    return response.data
+  }
+
   async extractFromVoice(transcript: string) {
     const response = await this.client.post('/ai/extract/voice', { transcript })
     return response.data

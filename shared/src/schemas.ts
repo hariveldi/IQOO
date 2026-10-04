@@ -150,15 +150,62 @@ export const AIActionSchema = z.object({
   id: z.string().optional(),
   type: z.enum([
     "CREATE_TASK",
+    "create_task",
     "UPDATE_TASK",
+    "update_task",
     "DELETE_TASK",
+    "delete_task",
     "CREATE_DEPENDENCY",
     "DELETE_DEPENDENCY",
     "CREATE_PROJECT",
     "SCHEDULE_PLAN",
+    "CREATE_CSV",
+    "create_csv",
+    "CREATE_REPORT",
+    "create_report",
+    "SAVE_NOTE",
+    "save_note",
+    "SUMMARIZE",
+    "summarize",
+    "EXTRACT_INFORMATION",
+    "extract_information",
+    "SEND_TO_LAPTOP",
+    "send_to_laptop",
   ]),
   description: z.string(),
   data: z.record(z.any()),
+});
+
+export const AICommitmentSchema = z.object({
+  isCommitment: z.boolean(),
+  owner: z.string(),
+  action: z.string(),
+  person: z.string().nullable().optional(),
+  deadline: z.string().nullable().optional(),
+  confidence: z.number().min(0).max(1),
+  executionType: z.enum(["message", "calendar", "laptop", "task"]),
+  requiresConfirmation: z.boolean(),
+  draftExecution: z
+    .object({
+      type: z.enum(["message", "calendar", "laptop", "task"]),
+      title: z.string(),
+      recipient: z.string().nullable().optional(),
+      draftText: z.string().optional(),
+      eventDate: z.string().nullable().optional(),
+      eventTime: z.string().nullable().optional(),
+      durationMinutes: z.number().optional(),
+      laptopPayload: z.any().optional(),
+      actionUri: z.string().optional(),
+    })
+    .optional(),
+});
+
+export const AIActionPipelineSchema = z.object({
+  text: z.string().optional(),
+  image: z.string().optional(),
+  mimeType: z.string().optional(),
+  imageType: z.string().optional(),
+  autoExecute: z.boolean().optional(),
 });
 
 export const ExecuteAIActionsSchema = z.object({

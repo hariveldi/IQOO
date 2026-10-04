@@ -19,6 +19,8 @@ const DashboardPage = React.lazy(() => import('./pages/Dashboard'))
 const InboxPage = React.lazy(() => import('./pages/Inbox'))
 const AIPage = React.lazy(() => import('./pages/AI'))
 const ProfilePage = React.lazy(() => import('./pages/Profile'))
+const AmbientAIPage = React.lazy(() => import('./pages/AmbientAI'))
+const OfficeKitCompanion = React.lazy(() => import('./pages/OfficeKitCompanion'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -143,6 +145,30 @@ export default function App() {
                   element={
                     <ProtectedRoute>
                       <ProfilePage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/ambient"
+                  element={
+                    <ProtectedRoute>
+                      <AmbientAIPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/office-kit"
+                  element={
+                    <ProtectedRoute>
+                      <OfficeKitCompanion />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/laptop"
+                  element={
+                    <ProtectedRoute>
+                      <OfficeKitCompanion />
                     </ProtectedRoute>
                   }
                 />

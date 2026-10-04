@@ -233,18 +233,99 @@ export interface ProductivityMetrics {
 // AI Actions & Context Types
 export type AIActionType =
   | "CREATE_TASK"
+  | "create_task"
   | "UPDATE_TASK"
+  | "update_task"
   | "DELETE_TASK"
+  | "delete_task"
   | "CREATE_DEPENDENCY"
   | "DELETE_DEPENDENCY"
   | "CREATE_PROJECT"
-  | "SCHEDULE_PLAN";
+  | "SCHEDULE_PLAN"
+  | "CREATE_CSV"
+  | "create_csv"
+  | "CREATE_REPORT"
+  | "create_report"
+  | "SAVE_NOTE"
+  | "save_note"
+  | "SUMMARIZE"
+  | "summarize"
+  | "EXTRACT_INFORMATION"
+  | "extract_information"
+  | "SEND_TO_LAPTOP"
+  | "send_to_laptop";
 
 export interface AIAction {
   id?: string;
   type: AIActionType;
   description: string;
   data: Record<string, any>;
+}
+
+export interface AICommitment {
+  isCommitment: boolean;
+  owner: string; // e.g. "me" or "You"
+  action: string; // e.g. "Send project report"
+  person?: string | null; // e.g. "Rahul"
+  deadline?: string | null; // e.g. "Tomorrow at 5 PM"
+  confidence: number; // e.g. 0.95
+  executionType: "message" | "calendar" | "laptop" | "task";
+  requiresConfirmation: boolean;
+  draftExecution?: {
+    type: "message" | "calendar" | "laptop" | "task";
+    title: string;
+    recipient?: string | null;
+    draftText?: string;
+    eventDate?: string | null;
+    eventTime?: string | null;
+    durationMinutes?: number;
+    laptopPayload?: any;
+    actionUri?: string;
+  };
+}
+
+export interface AIActionPipelineInput {
+  text?: string;
+  image?: string;
+  mimeType?: string;
+  imageType?: string;
+  autoExecute?: boolean;
+}
+
+export interface AIActionPipelineResult {
+  extractedInfo: {
+    title?: string;
+    summary?: string;
+    keyPoints?: string[];
+    fields?: Record<string, any>;
+    rawText?: string;
+    confidence?: number;
+    commitment?: AICommitment;
+  };
+  action: AIAction;
+  commitment?: AICommitment;
+  executed: boolean;
+  executionResult?: {
+    task?: any;
+    note?: any;
+    document?: any;
+    file?: {
+      name: string;
+      type: string;
+      content: string;
+      size: number;
+      downloadUrl?: string;
+    };
+    officeKitSync?: {
+      synced: boolean;
+      fileName: string;
+      destination: string;
+      timestamp: string;
+    };
+    message?: string;
+  };
+  provider: string;
+  isFallback: boolean;
 }
 
 export interface AIChatMessage {
@@ -305,7 +386,7 @@ export interface AIChatResponse {
   actions?: AIAction[];
   reasoning?: string;
   suggestedFollowUps?: string[];
-  provider: "openai" | "xkiro" | "local_fallback" | "anthropic" | "ollama";
+  provider: "openai" | "xkiro" | "local_fallback" | "anthropic" | "ollama" | "gemini" | string;
   isFallback: boolean;
 }
 

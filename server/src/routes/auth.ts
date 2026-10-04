@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authenticateToken } from "../middleware/auth";
+import { authLimiter } from "../middleware/rateLimiter";
 import { AuthController } from "../controllers/authController";
 import { AuthService } from "../services";
 import { UserRepository } from "../repositories";
@@ -10,12 +11,12 @@ const userRepo = new UserRepository();
 const authService = new AuthService(userRepo);
 const authController = new AuthController(authService);
 
-// Auth routes
-router.post("/register", (req, res, next) => {
+// Auth routes with targeted rate limiting on register and login
+router.post("/register", authLimiter, (req, res, next) => {
   authController.register(req, res).catch(next);
 });
 
-router.post("/login", (req, res, next) => {
+router.post("/login", authLimiter, (req, res, next) => {
   authController.login(req, res).catch(next);
 });
 

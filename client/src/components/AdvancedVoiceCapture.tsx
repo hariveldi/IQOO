@@ -66,14 +66,34 @@ export function AdvancedVoiceCapture({
     return true
   }, [])
 
-  const startRecording = () => {
+  const startRecording = async () => {
+    setError('')
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        // Keep or release after permission verification
+        stream.getTracks().forEach((track) => track.stop())
+      }
+    } catch (err: any) {
+      setError('Microphone access denied. Please allow microphone permissions.')
+      return
+    }
+
     if (initSpeechRecognition()) {
-      recognitionRef.current?.start()
+      try {
+        recognitionRef.current?.start()
+      } catch (err: any) {
+        setError(`Speech recognition error: ${err.message}`)
+      }
     }
   }
 
   const stopRecording = () => {
-    recognitionRef.current?.stop()
+    try {
+      recognitionRef.current?.stop()
+    } catch (e) {
+      // ignore
+    }
     setRecording(false)
   }
 

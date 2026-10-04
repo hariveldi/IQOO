@@ -137,6 +137,35 @@ export default function HomePage() {
             <Send size={16} />
           </button>
         </form>
+
+        {/* Quick Phone Action Chips */}
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <span className="text-xs text-slate-400 font-medium">Quick Workflows:</span>
+          <button
+            onClick={() => navigate('/ai', { state: { initialPrompt: 'Extract vendor, amount, due date from invoice and create a task' } })}
+            className="text-xs px-2.5 py-1 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 rounded-lg border border-slate-200 transition-colors shadow-2xs"
+          >
+            📷 Document to Task
+          </button>
+          <button
+            onClick={() => navigate('/ai', { state: { initialPrompt: 'Extract this data into a structured CSV spreadsheet' } })}
+            className="text-xs px-2.5 py-1 bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 rounded-lg border border-slate-200 transition-colors shadow-2xs"
+          >
+            📊 Extract to CSV
+          </button>
+          <button
+            onClick={() => navigate('/ai', { state: { initialPrompt: 'Generate a formal executive Markdown report from this document' } })}
+            className="text-xs px-2.5 py-1 bg-white hover:bg-purple-50 text-slate-700 hover:text-purple-700 rounded-lg border border-slate-200 transition-colors shadow-2xs"
+          >
+            📝 Generate Report
+          </button>
+          <button
+            onClick={() => navigate('/ai', { state: { initialPrompt: 'Extract content and sync to laptop via Office Kit' } })}
+            className="text-xs px-2.5 py-1 bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 rounded-lg border border-slate-200 transition-colors shadow-2xs"
+          >
+            💻 Send to Laptop
+          </button>
+        </div>
       </div>
 
       {/* 2. AI Daily Executive Briefing */}

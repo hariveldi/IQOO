@@ -1,5 +1,5 @@
 import React from 'react'
-import { Home, CheckSquare, FolderOpen, Brain, User, BarChart3, Inbox } from 'lucide-react'
+import { Home, CheckSquare, FolderOpen, Brain, User, BarChart3, Inbox, Radio } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
 export const BottomNavigation: React.FC = () => {
@@ -60,6 +60,17 @@ export const BottomNavigation: React.FC = () => {
           title="Dashboard"
         >
           <BarChart3 className="w-6 h-6" />
+        </NavLink>
+        <NavLink
+          to="/ambient"
+          className={({ isActive }) =>
+            `flex items-center justify-center p-3 transition-colors ${
+              isActive ? 'text-indigo-600 bg-indigo-50' : 'text-gray-600 hover:bg-gray-50'
+            }`
+          }
+          title="Ambient AI"
+        >
+          <Radio className="w-6 h-6" />
         </NavLink>
         <NavLink
           to="/ai"

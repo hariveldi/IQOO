@@ -14,6 +14,7 @@ import {
   AIAction,
   AIChatMessage,
   AISmartRecommendation,
+  AIActionPipelineResult,
 } from "@iqoo/shared";
 import { calculateTaskPriority, calculateDeadlineRisk } from "../productivity/prioritizer";
 import { ContextBuilder } from "../ai/contextBuilder";
@@ -166,6 +167,47 @@ export class AIService {
   async extractTaskFromVoice(userId: string, audioTranscript: string) {
     const context = await ContextBuilder.buildUserContext(userId);
     return this.aiProvider.extractTaskFromText(audioTranscript, context);
+  }
+
+  async processActionPipeline(
+    userId: string,
+    input: {
+      text?: string;
+      image?: string;
+      mimeType?: string;
+      imageType?: string;
+      autoExecute?: boolean;
+    }
+  ): Promise<AIActionPipelineResult> {
+    const context = await ContextBuilder.buildUserContext(userId);
+    const understanding = await this.aiProvider.understandAndStructureAction(input, context);
+
+    let executed = false;
+    let executionResult: any = undefined;
+
+    // If autoExecute is explicitly true or undefined (default true for instant productivity action), execute directly
+    const shouldExecute = input.autoExecute !== false;
+
+    if (shouldExecute && understanding.action) {
+      const batchResult = await ActionExecutor.executeBatch(userId, [understanding.action]);
+      const res = batchResult[0];
+      if (res && res.success) {
+        executed = true;
+        executionResult = res.result;
+      } else if (res && !res.success) {
+        executionResult = { error: res.error };
+      }
+    }
+
+    return {
+      extractedInfo: understanding.extractedInfo,
+      action: understanding.action,
+      commitment: understanding.commitment || understanding.extractedInfo?.commitment,
+      executed,
+      executionResult,
+      provider: this.aiProvider.getProviderName(),
+      isFallback: !this.aiProvider.isRealAI(),
+    };
   }
 
   async extractFromImage(_userId: string, imageBase64: string, imageType?: string) {

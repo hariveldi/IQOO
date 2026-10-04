@@ -28,8 +28,9 @@ export const config = {
     allowedMimeTypes: (process.env.ALLOWED_MIME_TYPES || "").split(","),
   },
   ai: {
-    provider: process.env.AI_PROVIDER || "local",
-    model: process.env.AI_MODEL || "llama2",
+    provider: process.env.AI_PROVIDER || "gemini",
+    model: process.env.AI_MODEL || "gemini-flash-lite-latest",
+    geminiKey: process.env.GEMINI_API_KEY,
     openaiKey: process.env.OPENAI_API_KEY,
     xkiroKey: process.env.XKIRO_API_KEY,
     anthropicKey: process.env.ANTHROPIC_API_KEY,

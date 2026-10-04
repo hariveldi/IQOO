@@ -3,6 +3,19 @@ import { AuthRequest } from "../middleware/auth";
 import { AIService, TaskService } from "../services";
 import { AppError } from "../middleware/errorHandler";
 import { AIAssistantRequestSchema, ExecuteAIActionsSchema } from "@iqoo/shared";
+import { prisma } from "../repositories/prisma";
+import { ActionExecutor } from "../ai/actions";
+
+export interface OfficeKitLaptopSession {
+  userId: string;
+  deviceId: string;
+  name: string;
+  lastSeen: number;
+  ip?: string;
+}
+
+// In-memory registry of active laptop connections per user
+export const activeLaptopSessions = new Map<string, OfficeKitLaptopSession>();
 
 export class AIController {
   constructor(private aiService: AIService, _taskService?: TaskService) {}
@@ -177,6 +190,60 @@ export class AIController {
     });
   }
 
+  async processActionPipeline(req: AuthRequest, res: Response) {
+    if (!req.userId) throw new AppError(401, "Not authenticated", "NOT_AUTHENTICATED");
+
+    const { text, image, mimeType, imageType, autoExecute } = req.body;
+    if (!text && !image) {
+      throw new AppError(400, "Either text instruction or image is required", "MISSING_INPUT");
+    }
+
+    const result = await this.aiService.processActionPipeline(req.userId, {
+      text,
+      image,
+      mimeType,
+      imageType,
+      autoExecute: autoExecute !== undefined ? Boolean(autoExecute) : true,
+    });
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  }
+
+  async getOfficeKitFiles(req: AuthRequest, res: Response) {
+    if (!req.userId) throw new AppError(401, "Not authenticated", "NOT_AUTHENTICATED");
+
+    const documents = await prisma.document.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    });
+
+    res.json({
+      success: true,
+      data: { documents },
+    });
+  }
+
+  async downloadOfficeKitFile(req: AuthRequest, res: Response) {
+    if (!req.userId) throw new AppError(401, "Not authenticated", "NOT_AUTHENTICATED");
+
+    const { id } = req.params;
+    const document = await prisma.document.findFirst({
+      where: { id, userId: req.userId },
+    });
+
+    if (!document) {
+      throw new AppError(404, "Document not found", "NOT_FOUND");
+    }
+
+    res.setHeader("Content-Disposition", `attachment; filename="${document.fileName}"`);
+    res.setHeader("Content-Type", document.fileType || "text/plain");
+    res.send(document.content || "");
+  }
+
   async getWeeklyReview(req: AuthRequest, res: Response) {
     if (!req.userId) throw new AppError(401, "Not authenticated", "NOT_AUTHENTICATED");
 
@@ -184,6 +251,200 @@ export class AIController {
     res.json({
       success: true,
       data: review,
+    });
+  }
+
+  async getOfficeKitStatus(req: AuthRequest, res: Response) {
+    if (!req.userId) throw new AppError(401, "Not authenticated", "NOT_AUTHENTICATED");
+
+    const session = activeLaptopSessions.get(req.userId);
+    const now = Date.now();
+    // Connected if heartbeat seen in last 60 seconds
+    const isConnected = !!(session && now - session.lastSeen < 60000);
+
+    const pendingCount = await prisma.document.count({
+      where: {
+        userId: req.userId,
+        filePath: { startsWith: "officekit/" },
+      },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        connected: isConnected,
+        laptop: isConnected && session
+          ? {
+              deviceId: session.deviceId,
+              name: session.name,
+              lastSeen: new Date(session.lastSeen).toISOString(),
+              ip: session.ip || "127.0.0.1",
+            }
+          : null,
+        pendingDocumentsCount: pendingCount,
+      },
+    });
+  }
+
+  async connectLaptop(req: AuthRequest, res: Response) {
+    if (!req.userId) throw new AppError(401, "Not authenticated", "NOT_AUTHENTICATED");
+
+    const deviceName = req.body?.deviceName || "Office Kit Connected Laptop";
+    const deviceId = req.body?.deviceId || `laptop_${Date.now()}`;
+
+    const session: OfficeKitLaptopSession = {
+      userId: req.userId,
+      deviceId,
+      name: deviceName,
+      lastSeen: Date.now(),
+      ip: req.ip,
+    };
+
+    activeLaptopSessions.set(req.userId, session);
+
+    res.json({
+      success: true,
+      data: {
+        connected: true,
+        laptop: {
+          deviceId: session.deviceId,
+          name: session.name,
+          lastSeen: new Date(session.lastSeen).toISOString(),
+        },
+      },
+    });
+  }
+
+  async laptopHeartbeat(req: AuthRequest, res: Response) {
+    if (!req.userId) throw new AppError(401, "Not authenticated", "NOT_AUTHENTICATED");
+
+    let session = activeLaptopSessions.get(req.userId);
+    if (!session) {
+      session = {
+        userId: req.userId,
+        deviceId: req.body?.deviceId || `laptop_${Date.now()}`,
+        name: req.body?.deviceName || "Office Kit Connected Laptop",
+        lastSeen: Date.now(),
+        ip: req.ip,
+      };
+      activeLaptopSessions.set(req.userId, session);
+    } else {
+      session.lastSeen = Date.now();
+    }
+
+    res.json({
+      success: true,
+      data: {
+        status: "alive",
+        lastSeen: new Date(session.lastSeen).toISOString(),
+      },
+    });
+  }
+
+  async disconnectLaptop(req: AuthRequest, res: Response) {
+    if (!req.userId) throw new AppError(401, "Not authenticated", "NOT_AUTHENTICATED");
+
+    activeLaptopSessions.delete(req.userId);
+
+    res.json({
+      success: true,
+      data: {
+        connected: false,
+      },
+    });
+  }
+
+  async transferTaskToLaptop(req: AuthRequest, res: Response) {
+    if (!req.userId) throw new AppError(401, "Not authenticated", "NOT_AUTHENTICATED");
+
+    const session = activeLaptopSessions.get(req.userId);
+    const now = Date.now();
+    const isConnected = !!(session && now - session.lastSeen < 60000);
+
+    if (!isConnected || !session) {
+      throw new AppError(
+        400,
+        "Laptop not connected via Office Kit. Please connect your laptop companion to enable sync.",
+        "LAPTOP_NOT_CONNECTED"
+      );
+    }
+
+    const { taskId, title, description, priority, deadline, status } = req.body || {};
+
+    let task = null;
+    if (taskId) {
+      task = await prisma.task.findFirst({
+        where: { id: taskId, userId: req.userId },
+      });
+    }
+
+    const taskTitle = task?.title || title || "Untitled Task";
+    const taskPriority = task?.priority || priority || "MEDIUM";
+    const taskDescription = task?.description || description || "";
+    const taskDeadline = task?.deadline ? new Date(task.deadline).toISOString() : deadline || null;
+    const taskStatus = task?.status || status || "TODO";
+
+    const fileName = `officekit_task_${(task?.id || Date.now()).toString().slice(-6)}_${taskTitle
+      .replace(/[^\w]/g, "_")
+      .slice(0, 30)}.md`;
+
+    const payloadContent = [
+      `# Office Kit Task Sync`,
+      `**Task**: ${taskTitle}`,
+      `**Priority**: ${taskPriority}`,
+      taskDeadline ? `**Deadline**: ${taskDeadline}` : null,
+      `**Status**: ${taskStatus}`,
+      `**Transferred At**: ${new Date().toISOString()}`,
+      `**Source**: iQOO Ambient AI Engine`,
+      `**Target Laptop**: ${session.name}`,
+      ``,
+      `## Description`,
+      taskDescription || "No additional description provided.",
+      ``,
+      `---`,
+      `*Synchronized seamlessly from iQOO Phone to ${session.name} via iQOO Office Kit.*`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const results = await ActionExecutor.executeBatch(req.userId, [
+      {
+        type: "SEND_TO_LAPTOP",
+        description: `Transfer task "${taskTitle}" to ${session.name}`,
+        data: {
+          fileName,
+          fileType: "text/markdown",
+          payload: payloadContent,
+          summary: `Office Kit: Transferred task "${taskTitle}" to ${session.name}`,
+          destination: session.name,
+          task: {
+            id: task?.id || taskId,
+            title: taskTitle,
+            priority: taskPriority,
+            deadline: taskDeadline,
+            status: taskStatus,
+          },
+        },
+      },
+    ]);
+
+    const execResult = results[0];
+
+    if (!execResult || !execResult.success) {
+      throw new AppError(
+        500,
+        execResult?.error || "Failed to transfer task to laptop",
+        "TRANSFER_FAILED"
+      );
+    }
+
+    res.json({
+      success: true,
+      data: {
+        transferred: true,
+        laptopName: session.name,
+        result: execResult.result,
+      },
     });
   }
 }
